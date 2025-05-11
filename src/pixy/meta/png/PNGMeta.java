@@ -54,6 +54,10 @@ import pixy.image.png.TextReader;
 import pixy.image.png.UnknownChunk;
 import pixy.io.IOUtils;
 import pixy.string.XMLUtils;
+import pixy.string.StringUtils;
+import pixy.meta.adobe.IRB;
+import pixy.meta.jpeg.JpegExif;
+
 /**
  * PNG image tweaking tool
  *
@@ -238,6 +242,8 @@ public class PNGMeta {
 				textualChunk.addChunk(chunk);			
 			} else if(type == ChunkType.TIME) {
 				metadataMap.put(MetadataType.PNG_TIME, new TIMEChunk(chunk));
+			} else if(type == ChunkType.EXIF) {
+				metadataMap.put(MetadataType.EXIF, new JpegExif(chunk.getData()));
 			}
 			
 			LOGGER.info("{} ({}) | {} bytes | 0x{} (CRC)", type.getName(), type.getAttribute(), length, Long.toHexString(chunk.getCRC()));
@@ -252,6 +258,42 @@ public class PNGMeta {
 			for (Map.Entry<String, String> entry : keyValMap.entrySet()) {
 				if(entry.getKey().equals("XML:com.adobe.xmp"))
 					metadataMap.put(MetadataType.XMP, new PngXMP(entry.getValue()));
+				else if (entry.getKey().equals("Raw profile type iptc")) {
+					// Experimental implementation due to limited information
+					String[] iptc = entry.getValue().trim().split("\n");
+                                        if(iptc.length >= 3) {
+						try {
+							String name = iptc[0].trim();
+							int length = Integer.parseInt(iptc[1].trim());
+							StringBuffer sb = new StringBuffer();
+							for(int i = 2; i < iptc.length; i++) {
+								sb.append(iptc[i]);
+							}
+							byte[] data = StringUtils.hexStringToByteArray(sb.toString());
+							metadataMap.put(MetadataType.PHOTOSHOP_IRB, new IRB(data));
+						} catch (Exception e) {
+							LOGGER.error("Error while converting IPTC from zTXT {}", e.getMessage());
+						}
+					}
+				} else if (entry.getKey().equals("Raw profile type exif")) {
+					// Experimental implementation due to limited information
+					String[] exif = entry.getValue().trim().split("\n");
+                                        if(exif.length >= 3) {
+						try {
+							String name = exif[0].trim();
+							int length = Integer.parseInt(exif[1].trim());
+							StringBuffer sb = new StringBuffer();
+							for(int i = 2; i < exif.length; i++) {
+								sb.append(exif[i]);
+							}
+							// Need to strip out exif header before passing to JpegExif constructor
+							byte[] data = StringUtils.hexStringToByteArray(sb.toString().substring(12));
+							metadataMap.put(MetadataType.EXIF, new JpegExif(data));
+						} catch (Exception e) {
+							LOGGER.error("Error while converting EXIF from zTXT {}", e.getMessage());
+						}
+					}
+				}
 			}
 		}
 			
