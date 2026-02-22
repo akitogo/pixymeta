@@ -814,7 +814,7 @@ public class TIFFMeta {
 		List<IFD> ifds = new ArrayList<IFD>();
 		readIFDs(null, null, TiffTag.class, ifds, offset, rin);
 		
-		if(pageNumber < 0 || pageNumber >= ifds.size())u
+		if(pageNumber < 0 || pageNumber >= ifds.size())
 			throw new IllegalArgumentException("pageNumber " + pageNumber + " out of bounds: 0 - " + (ifds.size() - 1));
 		
 		IFD workingPage = ifds.get(pageNumber);
