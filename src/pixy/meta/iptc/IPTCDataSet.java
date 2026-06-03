@@ -227,7 +227,17 @@ public class IPTCDataSet implements Comparable<IPTCDataSet> {
 						tagEnum = IPTCFotoStationTag.UNKNOWN;
 						break;
 					case UNKNOWN:
-						throw new RuntimeException("Unknown IPTC record"); 
+						// Originally threw `new RuntimeException("Unknown IPTC record")`,
+						// which aborted the entire file's metadata read every time the IPTC
+						// block contained a record number not in the IPTCRecord enum (older
+						// Photoshop pipelines, museum archive imports, custom Adobe Bridge
+						// metadata schemas all do this). One unknown record now falls back
+						// to the APPLICATION record's UNKNOWN tag enum so parsing continues
+						// for the rest of the file's tags. The inner switch is otherwise
+						// dead code — it switches on the same fromRecordNumber(recordNumber)
+						// as the outer switch, so it can only ever reach this UNKNOWN case.
+						tagEnum = IPTCApplicationTag.UNKNOWN;
+						break;
 				}
 		}
 		

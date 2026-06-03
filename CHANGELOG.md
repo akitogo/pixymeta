@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+### Fixed
+- `IPTCDataSet.getTagName()` no longer throws `RuntimeException("Unknown IPTC record")` when the IPTC record number does not map to a known `IPTCRecord` enum value. Falls back to `IPTCApplicationTag.UNKNOWN` so parsing continues for the rest of the file's IPTC tags. The throw was previously the only reachable branch of the inner `switch` at the `case UNKNOWN` block (the inner switch dispatched on the same `fromRecordNumber(recordNumber)` as the outer switch — if the outer hit `UNKNOWN`, the inner could only ever hit `UNKNOWN` too), so every file with a proprietary/non-standard IPTC record number aborted metadata reading. Observed in production at akibase-f1online generating hundreds of error log entries per scheduler tick for assets with IPTC blocks written by older Photoshop pipelines, museum archive imports, and custom Adobe Bridge schemas.
+
 ### Changed
 - Upgraded minimum Java version from 8 to 21
 - Upgraded SLF4J from 1.7.12 to 2.0.17
