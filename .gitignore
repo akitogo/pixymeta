@@ -2,3 +2,13 @@ build/
 bin/
 target/
 tmp/
+
+# TestPixyMeta writes its output artifacts to whatever cwd it was launched from.
+# Anything tracked already under images/ stays tracked — .gitignore doesn't
+# untrack files. This block just keeps stray test-output JPG/TIF/PNGs at the
+# repo root out of `git status`.
+*.jpg
+*.jpeg
+*.tif
+*.tiff
+*.png
