@@ -43,8 +43,9 @@
 	</target>
 	<target name="compile" depends="init">
 		<echo message="${ant.project.name}: ${ant.file}"/>
-        <javac includeantruntime="false" srcdir="src" destdir="build/classes" 
-            encoding="UTF-8" classpathref="pixymeta.classpath">
+        <javac includeantruntime="false" srcdir="src" destdir="build/classes"
+            encoding="UTF-8" classpathref="pixymeta.classpath"
+            source="21" target="21" release="21">
         </javac>
 	</target>
 	<target name="package" depends="compile, doc">

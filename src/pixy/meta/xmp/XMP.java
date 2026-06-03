@@ -51,16 +51,26 @@ public abstract class XMP extends Metadata {
 	private byte[] extendedXmpData;
 	
 	private String xmp;
-	
+
+	private static final String MINIMAL_XMP =
+		"<x:xmpmeta xmlns:x=\"adobe:ns:meta/\">" +
+		"<rdf:RDF xmlns:rdf=\"http://www.w3.org/1999/02/22-rdf-syntax-ns#\">" +
+		"</rdf:RDF>" +
+		"</x:xmpmeta>";
 
 	public static void showXMP(XMP xmp) {
 		XMLUtils.showXML(xmp.getMergedDocument());
 	}
 		
+	public XMP() {
+		super(MetadataType.XMP);
+		this.xmp = MINIMAL_XMP;
+	}
+
 	public XMP(byte[] data) {
 		super(MetadataType.XMP, data);
 	}
-	
+
 	public XMP(String xmp) {
 		super(MetadataType.XMP);
 		this.xmp = xmp;

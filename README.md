@@ -2,6 +2,12 @@
 Java image metadata CRUD tool - a pure Java image metadata manipulation tool.
 This is the meta data related part branched out from icafe repository.
 
+Requirements
+----------------------------------------
+- Java 21 or later
+- SLF4J 2.0.17
+- Log4j 2.25.0 (runtime)
+
 Image metadata manipulation:
 ----------------------------------------
 - JPEG and TIFF EXIF data manipulation
@@ -26,6 +32,27 @@ Image metadata manipulation:
    * Extract XMP metadata from JPEG, GIF, PNG, and TIFF image
    * In case of JPEG, handle normal XMP and extendedXMP which cannot fit into one APP1 segment
 
+
+How to compile
+----------------------------------------
+With Maven:
+```bash
+mvn clean compile
+```
+
+With Ant:
+```bash
+ant compile
+```
+
+To build the JAR:
+```bash
+mvn package
+```
+or:
+```bash
+ant package
+```
 
 Where can I get the latest release?
 -----------------------------------
