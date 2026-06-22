@@ -301,27 +301,25 @@ public class XMLUtils {
 	}
 	
 	public static byte[] serializeToByteArray(Document doc) throws IOException {
-		TransformerFactory tFactory = TransformerFactory.newInstance();
-		Transformer transformer = null;
-		try {
-			transformer = tFactory.newTransformer();
-		} catch (TransformerConfigurationException e) {
-			throw new IOException("Unable to serialize XML document");
-		}
-		transformer.setOutputProperty(OutputKeys.INDENT, "no");
-		transformer.setOutputProperty(OutputKeys.OMIT_XML_DECLARATION, "yes");
+		// Serialize via DOM Level 3 Load/Save using the implementation already attached to the
+		// document. This avoids javax.xml.transform.TransformerFactory entirely: under Lucee an
+		// older JAXP can shadow the JDK class (so newDefaultInstance() is missing), and forcing an
+		// encapsulated TransformerFactory impl via a system property fails under the Java module
+		// system ("module java.xml does not export ...xsltc.trax to unnamed module").
 		String encoding = doc.getInputEncoding();
 		if(encoding == null) encoding = "UTF-8";
-		transformer.setOutputProperty(OutputKeys.ENCODING, encoding);
-		DOMSource source = new DOMSource(doc);
+		DOMImplementationLS domImpl = (DOMImplementationLS) doc.getImplementation();
+		LSSerializer lsSerializer = domImpl.createLSSerializer();
+		// Omit the XML declaration to match the previous Transformer-based behaviour
+		// (JpegXMP wraps the output in an xpacket processing instruction).
+		if(lsSerializer.getDomConfig().canSetParameter("xml-declaration", Boolean.FALSE))
+			lsSerializer.getDomConfig().setParameter("xml-declaration", Boolean.FALSE);
+		LSOutput output = domImpl.createLSOutput();
+		output.setEncoding(encoding);
 		ByteArrayOutputStream out = new ByteArrayOutputStream();
-		Result result = new StreamResult(out);
-		try {
-			transformer.transform(source, result);
-		} catch (TransformerException e) {
-			throw new IOException("Unable to serialize XML document");
-		}
-		
+		output.setByteStream(out);
+		lsSerializer.write(doc, output);
+
 		return out.toByteArray();
 	}
 	
