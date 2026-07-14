@@ -1150,6 +1150,12 @@ public class TIFFMeta {
 			rin.seek(offset);
 			int field_length = rin.readInt();
 			offset += 4;
+			if(field_length < 0) {
+				// Corrupt entry (count read as negative) - skip the value slot instead of
+				// blowing up with a NegativeArraySizeException on array allocation.
+				offset += 4;
+				continue;
+			}
 			////// Try to read actual data.
 			switch (ftype) {
 				case BYTE:
@@ -1249,21 +1255,23 @@ public class TIFFMeta {
 					}
 					tiffIFD.addField(longField);
 					
-					if ((ftag == TiffTag.EXIF_SUB_IFD) && (ldata[0]!= 0)) {
+					// ldata can be empty when a corrupt entry declares count 0 - guard every
+					// ldata[0] access or we die with ArrayIndexOutOfBoundsException here.
+					if ((ftag == TiffTag.EXIF_SUB_IFD) && (ldata.length > 0) && (ldata[0]!= 0)) {
 						try { // If something bad happens, we skip the sub IFD
 							readIFD(tiffIFD, TiffTag.EXIF_SUB_IFD, ExifTag.class, rin, null, ldata[0]);
 						} catch(Exception e) {
 							tiffIFD.removeField(TiffTag.EXIF_SUB_IFD);
 							e.printStackTrace();
 						}
-					} else if ((ftag == TiffTag.GPS_SUB_IFD) && (ldata[0] != 0)) {
+					} else if ((ftag == TiffTag.GPS_SUB_IFD) && (ldata.length > 0) && (ldata[0] != 0)) {
 						try {
 							readIFD(tiffIFD, TiffTag.GPS_SUB_IFD, GPSTag.class, rin, null, ldata[0]);
 						} catch(Exception e) {
 							tiffIFD.removeField(TiffTag.GPS_SUB_IFD);
 							e.printStackTrace();
 						}
-					} else if((ftag == ExifTag.EXIF_INTEROPERABILITY_OFFSET) && (ldata[0] != 0)) {
+					} else if((ftag == ExifTag.EXIF_INTEROPERABILITY_OFFSET) && (ldata.length > 0) && (ldata[0] != 0)) {
 						try {
 							readIFD(tiffIFD, ExifTag.EXIF_INTEROPERABILITY_OFFSET, InteropTag.class, rin, null, ldata[0]);
 						} catch(Exception e) {
