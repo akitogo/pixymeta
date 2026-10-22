@@ -2,6 +2,12 @@
 Java image metadata CRUD tool - a pure Java image metadata manipulation tool.
 This is the meta data related part branched out from icafe repository.
 
+> **About this fork.** PIXYMETA is the work of Wen Yu ([dragon66](https://github.com/dragon66)).
+> The original repository is [dragon66/pixymeta](https://github.com/dragon66/pixymeta). This fork,
+> maintained by [akitogo](https://www.akitogo.com), keeps the library building on current Java,
+> fixes bugs found in production, and publishes releases to Maven Central. All credit for the
+> design and the bulk of the code goes to the original author. See [Credits](#credits).
+
 Requirements
 ----------------------------------------
 - Java 21 or later
