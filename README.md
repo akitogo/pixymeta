@@ -53,23 +53,18 @@ This repository is a maintained fork of [dragon66/pixymeta](https://github.com/d
 (Java 21, SLF4J 2, bug fixes; see [CHANGELOG.md](CHANGELOG.md)). The upstream project was never
 released to Maven Central and its Sonatype snapshots are no longer available.
 
-Until this fork is published, build it from source and install it into your local repository:
-
-```bash
-mvn clean install
-```
-
-Then depend on it from your pom.xml:
+Releases of this fork are published to Maven Central:
 
 ```xml
 <dependency>
-  <groupId>com.github.dragon66</groupId>
+  <groupId>com.akitogo</groupId>
   <artifactId>pixymeta</artifactId>
-  <version>1.0-SNAPSHOT</version>
+  <version>1.1.0</version>
 </dependency>
 ```
 
-The only runtime dependency is `org.slf4j:slf4j-api`.
+The only runtime dependency is `org.slf4j:slf4j-api`. To build from source and install into your
+local repository instead, run `mvn clean install`.
 
 Go to the [wiki] page to see this library in action or grab the "pixymeta.jar" from the lib folder and try it yourself!
 

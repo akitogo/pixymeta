@@ -1,37 +1,154 @@
 <project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
   xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
   <modelVersion>4.0.0</modelVersion>
-  <groupId>com.github.dragon66</groupId>
+
+  <groupId>com.akitogo</groupId>
   <artifactId>pixymeta</artifactId>
-  <version>1.0-SNAPSHOT</version>
+  <version>1.1.0</version>
   <packaging>jar</packaging>
+
   <name>PIXYMETA Java metadata library</name>
-  <url>https://github.com/dragon66/pixymeta</url>
+  <description>Pure Java image metadata (EXIF, IPTC, XMP, ICC, Photoshop IRB) read/write library for JPEG, TIFF, PNG and GIF. Maintained fork of dragon66/pixymeta (Java 21, SLF4J 2, bug fixes).</description>
+  <url>https://github.com/akitogo/pixymeta</url>
+  <inceptionYear>2015</inceptionYear>
+
+  <licenses>
+    <license>
+      <name>Eclipse Public License - v 1.0</name>
+      <url>https://www.eclipse.org/legal/epl-v10.html</url>
+      <distribution>repo</distribution>
+    </license>
+  </licenses>
+
+  <developers>
+    <developer>
+      <name>Wen Yu</name>
+      <email>yuwen_66@yahoo.com</email>
+      <url>https://github.com/dragon66</url>
+      <roles>
+        <role>original author</role>
+      </roles>
+    </developer>
+    <developer>
+      <name>Gunnar Lieb</name>
+      <email>gunnar.lieb@akitogo.com</email>
+      <organization>akitogo</organization>
+      <organizationUrl>https://www.akitogo.com</organizationUrl>
+      <roles>
+        <role>fork maintainer</role>
+      </roles>
+    </developer>
+  </developers>
+
+  <scm>
+    <connection>scm:git:https://github.com/akitogo/pixymeta.git</connection>
+    <developerConnection>scm:git:git@github.com:akitogo/pixymeta.git</developerConnection>
+    <url>https://github.com/akitogo/pixymeta</url>
+    <tag>HEAD</tag>
+  </scm>
+
+  <issueManagement>
+    <system>GitHub</system>
+    <url>https://github.com/akitogo/pixymeta/issues</url>
+  </issueManagement>
+
+  <properties>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <maven.compiler.release>21</maven.compiler.release>
+  </properties>
+
+  <dependencies>
+    <dependency>
+      <groupId>org.slf4j</groupId>
+      <artifactId>slf4j-api</artifactId>
+      <version>2.0.17</version>
+    </dependency>
+    <dependency>
+      <groupId>org.slf4j</groupId>
+      <artifactId>slf4j-simple</artifactId>
+      <version>2.0.17</version>
+      <scope>test</scope>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <sourceDirectory>src</sourceDirectory>
+    <testSourceDirectory>src</testSourceDirectory>
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-compiler-plugin</artifactId>
+        <version>3.13.0</version>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-source-plugin</artifactId>
+        <version>3.3.1</version>
+        <executions>
+          <execution>
+            <id>attach-sources</id>
+            <goals>
+              <goal>jar-no-fork</goal>
+            </goals>
+          </execution>
+        </executions>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-javadoc-plugin</artifactId>
+        <version>3.12.0</version>
+        <configuration>
+          <doclint>none</doclint>
+          <quiet>true</quiet>
+        </configuration>
+        <executions>
+          <execution>
+            <id>attach-javadocs</id>
+            <goals>
+              <goal>jar</goal>
+            </goals>
+          </execution>
+        </executions>
+      </plugin>
+    </plugins>
+  </build>
+
+  <profiles>
+    <!-- Activate with: mvn clean deploy -Prelease
+         Requires a GPG key and a "central" server entry (Sonatype Central Portal token) in ~/.m2/settings.xml -->
+    <profile>
+      <id>release</id>
       <build>
-        <sourceDirectory>src</sourceDirectory>
-        <testSourceDirectory>src</testSourceDirectory>
         <plugins>
           <plugin>
             <groupId>org.apache.maven.plugins</groupId>
-            <artifactId>maven-compiler-plugin</artifactId>
-            <version>3.13.0</version>
+            <artifactId>maven-gpg-plugin</artifactId>
+            <version>3.2.8</version>
+            <executions>
+              <execution>
+                <id>sign-artifacts</id>
+                <phase>verify</phase>
+                <goals>
+                  <goal>sign</goal>
+                </goals>
+                <configuration>
+                  <bestPractices>true</bestPractices>
+                </configuration>
+              </execution>
+            </executions>
+          </plugin>
+          <plugin>
+            <groupId>org.sonatype.central</groupId>
+            <artifactId>central-publishing-maven-plugin</artifactId>
+            <version>0.12.0</version>
+            <extensions>true</extensions>
             <configuration>
-              <release>21</release>
+              <publishingServerId>central</publishingServerId>
+              <autoPublish>false</autoPublish>
             </configuration>
           </plugin>
         </plugins>
-    </build>
-  <dependencies>
-      <dependency>
-	    <groupId>org.slf4j</groupId>
-		<artifactId>slf4j-api</artifactId>
-		<version>2.0.17</version>
-      </dependency>
-      <dependency>
-	    <groupId>org.slf4j</groupId>
-		<artifactId>slf4j-simple</artifactId>
-		<version>2.0.17</version>
-		<scope>test</scope>
-      </dependency>
-  </dependencies>
+      </build>
+    </profile>
+  </profiles>
 </project>

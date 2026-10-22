@@ -1,6 +1,9 @@
 # Changelog
 
-## Unreleased
+## 1.1.0 - 2026-10-22
+
+First release of the akitogo fork, published to Maven Central as `com.akitogo:pixymeta`.
+Upstream `com.github.dragon66:pixymeta` was never released.
 
 ### Fixed
 - `TIFFMeta.readIFD()` no longer throws `ArrayIndexOutOfBoundsException: Index 0 out of bounds for length 0` when a LONG/SLONG IFD entry declares count 0: the EXIF_SUB_IFD / GPS_SUB_IFD / EXIF_INTEROPERABILITY_OFFSET dispatch accessed `ldata[0]` unconditionally. All three checks now guard on `ldata.length > 0`. Also, an IFD entry whose count reads as negative (corrupt data) is skipped instead of crashing array allocation with `NegativeArraySizeException`. Observed in production at akibase (import queue) on JPEGs whose EXIF IFD carries a zero-count sub-IFD pointer, e.g. 25187327.jpg; such files aborted all metadata reading (IPTC/XMP included) even though only the EXIF block was malformed.
