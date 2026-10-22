@@ -9,9 +9,15 @@
 ### Changed
 - Upgraded minimum Java version from 8 to 21
 - Upgraded SLF4J from 1.7.12 to 2.0.17
-- Replaced Log4j 1.2.17 with Log4j 2.25.0
-- Replaced `log4j.properties` with `log4j2.xml` configuration
-- Updated Eclipse `.classpath` for JavaSE-21 and new dependency JARs
+- Removed Log4j entirely. The library only uses the SLF4J API; the Log4j 2 runtime dependencies
+  and the bundled `log4j2.xml` forced a logging backend onto every consumer and clashed with the
+  SLF4J binding already present in hosts such as Lucee and BoxLang. Consumers now pick their own
+  binding. `slf4j-simple` is available in test scope for local development.
+- Removed the unused `jai-imageio-core` dependency (nothing in the sources imports it; the only
+  reference was a Javadoc comment).
+- Updated Eclipse `.classpath` for JavaSE-21 and the trimmed dependency set
+- Removed the Ant build (`build.xml`, `lib/`, `dist/`, and the stale compiled classes that were
+  tracked under `build/`). Maven is the only build now.
 
 ### Why
 - Log4j 1.x is end-of-life with known CVEs

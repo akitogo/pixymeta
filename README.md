@@ -5,8 +5,11 @@ This is the meta data related part branched out from icafe repository.
 Requirements
 ----------------------------------------
 - Java 21 or later
-- SLF4J 2.0.17
-- Log4j 2.25.0 (runtime)
+- SLF4J API 2.0.17
+
+PIXYMETA logs through the SLF4J API only and ships no logging backend. Add the SLF4J binding of
+your choice (Logback, Log4j 2, slf4j-simple, ...) to your own classpath; without one, SLF4J falls
+back to its no-op logger.
 
 Image metadata manipulation:
 ----------------------------------------
@@ -35,44 +38,28 @@ Image metadata manipulation:
 
 How to compile
 ----------------------------------------
-With Maven:
+The project builds with Maven:
+
 ```bash
-mvn clean compile
+mvn clean package
 ```
 
-With Ant:
-```bash
-ant compile
-```
-
-To build the JAR:
-```bash
-mvn package
-```
-or:
-```bash
-ant package
-```
+The jar lands in `target/`. Run `mvn clean install` to make it available to other local Maven
+projects.
 
 Where can I get the latest release?
 -----------------------------------
-There is currently no stable release of PIXYMETA. However you can pull the latest SNAPSHOT from Sonatype SNAPSHOT repository by adding the snapshot repository to your pom.xml:
- 
-```xml
-<repository>
-  <id>oss.sonatype.org</id>
-  <name>Sonatype Snapshot Repository</name>
-  <url>https://oss.sonatype.org/content/repositories/snapshots</url>
-  <releases>
-    <enabled>false</enabled>
-  </releases>
-  <snapshots>
-    <enabled>true</enabled>
-  </snapshots>
-</repository> 
+This repository is a maintained fork of [dragon66/pixymeta](https://github.com/dragon66/pixymeta)
+(Java 21, SLF4J 2, bug fixes; see [CHANGELOG.md](CHANGELOG.md)). The upstream project was never
+released to Maven Central and its Sonatype snapshots are no longer available.
+
+Until this fork is published, build it from source and install it into your local repository:
+
+```bash
+mvn clean install
 ```
 
-Then you can use the SNAPSHOT version of PIXYMETA in your pom.xml:
+Then depend on it from your pom.xml:
 
 ```xml
 <dependency>
@@ -80,8 +67,9 @@ Then you can use the SNAPSHOT version of PIXYMETA in your pom.xml:
   <artifactId>pixymeta</artifactId>
   <version>1.0-SNAPSHOT</version>
 </dependency>
-``` 
+```
 
+The only runtime dependency is `org.slf4j:slf4j-api`.
 
 Go to the [wiki] page to see this library in action or grab the "pixymeta.jar" from the lib folder and try it yourself!
 

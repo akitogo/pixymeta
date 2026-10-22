@@ -12,11 +12,6 @@
 			<attribute name="maven.pomderived" value="true"/>
 		</attributes>
 	</classpathentry>
-	<classpathentry kind="lib" path="lib/jai_imageio.jar"/>
-	<classpathentry kind="lib" path="lib/slf4j-api-2.0.17.jar"/>
-	<classpathentry kind="lib" path="lib/log4j-api-2.25.0.jar"/>
-	<classpathentry kind="lib" path="lib/log4j-core-2.25.0.jar"/>
-	<classpathentry kind="lib" path="lib/log4j-slf4j2-impl-2.25.0.jar"/>
 	<classpathentry kind="con" path="org.eclipse.m2e.MAVEN2_CLASSPATH_CONTAINER">
 		<attributes>
 			<attribute name="maven.pomderived" value="true"/>

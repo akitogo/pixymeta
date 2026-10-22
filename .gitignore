@@ -11,4 +11,5 @@ tmp/
 *.jpeg
 *.tif
 *.tiff
-*.png
+*.pngdist/
+lib/
