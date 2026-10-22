@@ -66,8 +66,15 @@ Releases of this fork are published to Maven Central:
 The only runtime dependency is `org.slf4j:slf4j-api`. To build from source and install into your
 local repository instead, run `mvn clean install`.
 
-Go to the [wiki] page to see this library in action or grab the "pixymeta.jar" from the lib folder and try it yourself!
+Go to the upstream [wiki] page to see this library in action.
+
+Suggestions? Bugs? [Open] an issue on this fork.
+
+Credits
+----------------------------------------
+PIXYMETA was originally written by Wen Yu ([dragon66](https://github.com/dragon66),
+yuwen_66@yahoo.com) as the metadata part of the icafe project. This fork is maintained by
+[akitogo](https://www.akitogo.com).
 
 [wiki]:https://github.com/dragon66/pixymeta/wiki
-[Open]:https://github.com/dragon66/pixymeta/issues/new
-Suggestions? custom requirements? [Open] an issue or send email to me directly: yuwen_66@yahoo.com
+[Open]:https://github.com/akitogo/pixymeta/issues/new
