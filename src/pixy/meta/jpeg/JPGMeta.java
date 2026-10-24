@@ -122,6 +122,13 @@ public class JPGMeta {
 	
 	// Obtain a logger instance
 	private static final Logger LOGGER = LoggerFactory.getLogger(JPGMeta.class);
+
+	/**
+	 * Upper bound for the reassembled ExtendedXMP buffer. The length field is a 32-bit value from
+	 * the file (up to ~4 GB); any real ExtendedXMP payload is far smaller, so this caps a
+	 * memory-exhaustion vector while leaving legitimate files unaffected.
+	 */
+	private static final long MAX_EXTENDED_XMP_LENGTH = 128L * 1024 * 1024;
 	
 	private static short copySegment(short marker, InputStream is, OutputStream os) throws IOException {
 		int length = IOUtils.readUnsignedShortMM(is);
@@ -1388,11 +1395,10 @@ public class JPGMeta {
   		}
 	}
 	
-	private static void readDHT(InputStream is, List<HTable> m_acTables, List<HTable> m_dcTables) throws IOException {	
+	private static void readDHT(InputStream is, List<HTable> m_acTables, List<HTable> m_dcTables) throws IOException {
 		int len = IOUtils.readUnsignedShortMM(is);
-        byte buf[] = new byte[len - 2];
-        IOUtils.readFully(is, buf);
-		
+        byte buf[] = readSegmentBody(is, len, "DHT");
+
 		DHTReader reader = new DHTReader(new Segment(Marker.DHT, len, buf));
 		
 		List<HTable> dcTables = reader.getDCTables();
@@ -1405,9 +1411,8 @@ public class JPGMeta {
 	// Process define Quantization table
 	private static void readDQT(InputStream is, List<QTable> m_qTables) throws IOException {
 		int len = IOUtils.readUnsignedShortMM(is);
-		byte buf[] = new byte[len - 2];
-		IOUtils.readFully(is, buf);
-		
+		byte buf[] = readSegmentBody(is, len, "DQT");
+
 		DQTReader reader = new DQTReader(new Segment(Marker.DQT, len, buf));
 		List<QTable> qTables = reader.getTables();
 		m_qTables.addAll(qTables);		
@@ -1505,10 +1510,14 @@ public class JPGMeta {
 						readers.add(readSOF(is, emarker));
 						marker = IOUtils.readShortMM(is);
 						break;
-					case SOS:	
-						SOFReader reader = readers.get(readers.size() - 1);
+					case SOS:
+						// A malformed stream can present SOS before any SOF, leaving the readers list
+						// empty; readers.get(size - 1) would then throw IndexOutOfBounds. Pass null in
+						// that case and let readSOS/SOSReader cope.
+						SOFReader reader = readers.isEmpty() ? null : readers.get(readers.size() - 1);
 						marker = readSOS(is, reader);
-						LOGGER.debug("\n{}", sofToString(reader));
+						if (reader != null)
+							LOGGER.debug("\n{}", sofToString(reader));
 						break;
 					case JPG: // JPG and JPGn shouldn't appear in the image.
 					case JPG0:
@@ -1539,6 +1548,9 @@ public class JPGMeta {
 		for(Segment segment : appnSegments) {
 			byte[] data = segment.getData();
 			length = segment.getLength();
+			// Each APPn segment is an independent byte[]; a malformed one (short identifier,
+			// out-of-range sub-length, bad ExtendedXMP header) must not abort reading the others.
+			try {
 			if(segment.getMarker() == Marker.APP0) {
 				if (new String(data, 0, JFIF_ID.length()).equals(JFIF_ID)) {
 					metadataMap.put(MetadataType.JPG_JFIF, new JFIF(ArrayUtils.subArray(data, JFIF_ID.length(), length - JFIF_ID.length() - 2)));
@@ -1557,20 +1569,30 @@ public class JPGMeta {
 					// Retrieve and remove XMP GUID if available
 					xmpGUID = XMLUtils.getAttribute(xmp.getXmpDocument(), "rdf:Description", "xmpNote:HasExtendedXMP");
 				} else if(new String(data, 0, XMP_EXT_ID.length()).equals(XMP_EXT_ID)) {
-					// We found ExtendedXMP, add the data to ExtendedXMP memory buffer				
+					// We found ExtendedXMP, add the data to ExtendedXMP memory buffer
 					int i = XMP_EXT_ID.length();
 					// 128-bit MD5 digest of the full ExtendedXMP serialization
 					byte[] guid = ArrayUtils.subArray(data, i, 32);
-					if(Arrays.equals(guid, xmpGUID.getBytes())) { // We have matched the GUID, copy it
+					// xmpGUID is null unless a standard XMP segment advertised HasExtendedXMP; guard it
+					// so a stray ExtendedXMP segment does not NPE.
+					if(xmpGUID != null && Arrays.equals(guid, xmpGUID.getBytes())) { // matched GUID, copy it
 						i += 32;
 						long extendedXMPLength = IOUtils.readUnsignedIntMM(data, i);
 						i += 4;
+						// The total length is attacker-controlled (up to 4 GB). Reject a negative or
+						// absurd value before new byte[...] turns it into an OutOfMemoryError (an Error,
+						// which the per-segment catch below would not stop).
+						if(extendedXMPLength < 0 || extendedXMPLength > MAX_EXTENDED_XMP_LENGTH)
+							throw new IOException("Invalid ExtendedXMP length: " + extendedXMPLength);
 						if(extendedXMP == null)
 							extendedXMP = new byte[(int)extendedXMPLength];
 						// Offset for the current segment
 						long offset = IOUtils.readUnsignedIntMM(data, i);
 						i += 4;
 						byte[] xmpBytes = ArrayUtils.subArray(data, i, length - XMP_EXT_ID.length() - 42);
+						// Validate the destination window lies within the buffer (guards arraycopy).
+						if(offset < 0 || offset + xmpBytes.length > extendedXMP.length)
+							throw new IOException("ExtendedXMP segment offset out of range");
 						System.arraycopy(xmpBytes, 0, extendedXMP, (int)offset, xmpBytes.length);
 					}
 				}
@@ -1596,9 +1618,12 @@ public class JPGMeta {
 					metadataMap.put(MetadataType.JPG_ADOBE, new Adobe(ArrayUtils.subArray(data, ADOBE_ID.length(), length - ADOBE_ID.length() - 2)));
 				}
 			}
+			} catch (Exception ex) {
+				LOGGER.warn("Skipping malformed {} segment: {}", segment.getMarker(), ex.toString());
+			}
 		}
-		
-		// Now it's time to join multiple segments ICC_PROFILE and/or XMP		
+
+		// Now it's time to join multiple segments ICC_PROFILE and/or XMP
 		if(iccProfileStream != null) { // We have ICCProfile data
 			ICCProfile icc_profile = new ICCProfile(iccProfileStream.toByteArray());
 			metadataMap.put(MetadataType.ICC_PROFILE, icc_profile);
@@ -1651,18 +1676,28 @@ public class JPGMeta {
 	
 	private static byte[] readSegmentData(InputStream is) throws IOException {
 		int length = IOUtils.readUnsignedShortMM(is);
-		byte[] data = new byte[length - 2];
-		IOUtils.readFully(is, data);
-		
-		return data;
+		return readSegmentBody(is, length, "APPn/COM");
+	}
+
+	/**
+	 * Reads the body of a JPEG marker segment whose 2-byte length has already been read. A JPEG
+	 * segment length includes the 2 length bytes themselves, so any value below 2 is corrupt and
+	 * would otherwise allocate {@code new byte[len - 2]} with a negative size
+	 * ({@link NegativeArraySizeException}). Reject it with a checked {@link IOException} instead.
+	 */
+	private static byte[] readSegmentBody(InputStream is, int len, String what) throws IOException {
+		if (len < 2)
+			throw new IOException("Invalid JPEG " + what + " segment length: " + len);
+		byte[] buf = new byte[len - 2];
+		IOUtils.readFully(is, buf);
+		return buf;
 	}
 	
-	private static SOFReader readSOF(InputStream is, Marker marker) throws IOException {		
+	private static SOFReader readSOF(InputStream is, Marker marker) throws IOException {
 		int len = IOUtils.readUnsignedShortMM(is);
-		byte buf[] = new byte[len - 2];
-		IOUtils.readFully(is, buf);
-		
-		Segment segment = new Segment(marker, len, buf);		
+		byte buf[] = readSegmentBody(is, len, "SOF");
+
+		Segment segment = new Segment(marker, len, buf);
 		SOFReader reader = new SOFReader(segment);
 		
 		return reader;
@@ -1672,9 +1707,8 @@ public class JPGMeta {
 	// SOSs in case of progressive JPEG
 	private static short readSOS(InputStream is, SOFReader sofReader) throws IOException {
 		int len = IOUtils.readUnsignedShortMM(is);
-		byte buf[] = new byte[len - 2];
-		IOUtils.readFully(is, buf);
-		
+		byte buf[] = readSegmentBody(is, len, "SOS");
+
 		Segment segment = new Segment(Marker.SOS, len, buf);
 		new SOSReader(segment, sofReader);
 		

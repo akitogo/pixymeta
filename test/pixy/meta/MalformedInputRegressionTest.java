@@ -207,6 +207,24 @@ public class MalformedInputRegressionTest {
 		assertNull(doc, "A DOCTYPE declaration must be rejected to prevent XXE");
 	}
 
+	// ---- Finding 9: format-rejection paths throw IOException, not RuntimeException ----
+
+	@Test
+	@DisplayName("A file shorter than the 4-byte magic number is rejected with IOException")
+	void tinyFileRejectedWithIOException() {
+		// Previously PeekHeadInputStream wrapped the EOF in an unchecked RuntimeException.
+		assertThrows(IOException.class, () -> readMetadata(new byte[] {0x01, 0x02}));
+	}
+
+	@Test
+	@DisplayName("A file with the PNG magic but a corrupt signature is rejected with IOException")
+	void pngBadSignatureRejectedWithIOException() {
+		// First 4 bytes match the PNG magic (so it is routed to the PNG reader), but the full 8-byte
+		// signature is wrong. Previously this threw a RuntimeException.
+		byte[] bytes = {(byte) 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x00};
+		assertThrows(IOException.class, () -> readMetadata(bytes));
+	}
+
 	// ----------------------------- helpers -----------------------------
 
 	private static void readMetadata(byte[] bytes) throws IOException {

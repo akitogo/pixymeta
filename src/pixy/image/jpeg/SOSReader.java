@@ -44,25 +44,32 @@ public class SOSReader implements Reader {
 	
 	public void read() throws IOException {
 		//
-		byte[] data = segment.getData();		
+		byte[] data = segment.getData();
 		int count = 0;
-		
-		byte numOfComponents = data[count++];
-		Component[] components = reader.getComponents();		
-		
+
+		// Tolerate a truncated SOS header and a missing SOF (null reader / null components) without
+		// throwing: a malformed scan header must not abort metadata reading of the whole file.
+		if (data.length == 0) return;
+		int numOfComponents = data[count++] & 0xff;
+		Component[] components = (reader != null) ? reader.getComponents() : null;
+
 		for(int i = 0; i < numOfComponents; i++) {
+			if (count + 2 > data.length) return;
 			byte id = data[count++];
-			byte tbl_no = data[count++];			
-		
-			for(Component component : components) {
-				if(component.getId() == id) {					
-					component.setACTableNumber((byte)(tbl_no&0x0f));
-					component.setDCTableNumber((byte)((tbl_no>>4)&0x0f));
-					break;
+			byte tbl_no = data[count++];
+
+			if (components != null) {
+				for(Component component : components) {
+					if(component.getId() == id) {
+						component.setACTableNumber((byte)(tbl_no&0x0f));
+						component.setDCTableNumber((byte)((tbl_no>>4)&0x0f));
+						break;
+					}
 				}
 			}
 		}
-		
+
+		if (count + 3 > data.length) return;
 		//Start of spectral or predictor selection
 		Ss = data[count++];
 	    //End of spectral selection

@@ -74,19 +74,31 @@ public class SOFReader implements Reader {
 	public void read() throws IOException {
 		//
 		byte[] data = segment.getData();
-		// This is in bits/sample, usually 8, (12 and 16 not supported by most software). 
+		// A valid SOF header is at least 6 bytes (precision, height, width, component count). A
+		// shorter segment is corrupt; leave the frame empty rather than throwing AIOOBE.
+		if (data.length < 6) {
+			numOfComponents = 0;
+			components = new Component[0];
+			return;
+		}
+		// This is in bits/sample, usually 8, (12 and 16 not supported by most software).
 		precision = data[0]; // Usually 8, for baseline JPEG
 		// Image frame width and height
 		frameHeight = IOUtils.readUnsignedShortMM(data, 1);
 		frameWidth = IOUtils.readUnsignedShortMM(data, 3);
 		 // Number of components
-		// Usually 1 = grey scaled, 3 = color YCbCr or YIQ, 4 = color CMYK 
+		// Usually 1 = grey scaled, 3 = color YCbCr or YIQ, 4 = color CMYK
         // JFIF uses either 1 component (Y, greyscaled) or 3 components (YCbCr, sometimes called YUV, color).
-		numOfComponents = data[5];
+		// Mask to unsigned: data[5] is a signed byte, so 0x80+ would otherwise give a negative count
+		// and new Component[negative] -> NegativeArraySizeException. Clamp to the 3-byte-per-component
+		// data actually present so a truncated segment cannot over-read.
+		numOfComponents = data[5] & 0xff;
+		int available = (data.length - 6) / 3;
+		if (numOfComponents > available) numOfComponents = available;
 		components = new Component[numOfComponents];
-	
+
 		int offset = 6;
-		
+
 		for (int i = 0; i < numOfComponents; i++) {
 			byte componentId = data[offset++];
 			// Sampling factors (1byte) (bit 0-3 horizontal, 4-7 vertical).

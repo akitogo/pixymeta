@@ -197,15 +197,22 @@ public class IPTC extends Metadata {
 	public void read() throws IOException {
 		if(!isDataRead) {
 			int i = 0;
-			int tagMarker = data[i];
 			datasetMap = new TreeMap<IPTCTag, List<IPTCDataSet>>(new IPTCTagComparator());
+			if(data.length == 0) { isDataRead = true; return; }
+			int tagMarker = data[i];
 			while (tagMarker == 0x1c) {
+				// A dataset header is 5 bytes: 0x1c marker, record number, tag, 2-byte size. Stop if
+				// the buffer is too short rather than indexing past the end.
+				if(i + 5 > data.length) break;
 				i++;
 				int recordNumber = data[i++]&0xff;
 				int tag = data[i++]&0xff;
 				int recordSize = IOUtils.readUnsignedShortMM(data, i);
 				i += 2;
-				
+				// The dataset keeps (data, offset, size) and slices it lazily (getData/hashCode), so a
+				// size that runs past the buffer would throw later; stop here instead.
+				if(i + recordSize > data.length) break;
+
 				if(recordSize > 0) {
 					IPTCDataSet dataSet = new IPTCDataSet(recordNumber, tag, recordSize, data, i);
 					

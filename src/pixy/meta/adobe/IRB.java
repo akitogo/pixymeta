@@ -137,19 +137,28 @@ public class IRB extends Metadata {
 				String _8bim = new String(data, i, 4);
 				i += 4;			
 				if(_8bim.equals("8BIM")) {
+					// Every field below is read from attacker-controlled data; bail out of the loop
+					// the moment the declared structure runs past the buffer, so a truncated or
+					// malformed 8BIM resource stops parsing cleanly instead of throwing
+					// ArrayIndexOutOfBounds / StringIndexOutOfBounds / IllegalArgumentException.
+					if(i + 2 > data.length) break;
 					short id = IOUtils.readShortMM(data, i);
 					i += 2;
 					// Pascal string for name follows
 					// First byte denotes string length -
+					if(i >= data.length) break;
 					int nameLen = data[i++]&0xff;
 					if((nameLen%2) == 0) nameLen++;
+					if(i + nameLen > data.length) break;
 					String name = new String(data, i, nameLen).trim();
 					i += nameLen;
 					//
+					if(i + 4 > data.length) break;
 					int size = IOUtils.readIntMM(data, i);
 					i += 4;
-					
+
 					if(size <= 0) continue; //Fix bug with zero size 8BIM
+					if(i + size > data.length) break; // declared resource size exceeds the buffer
 					
 					ImageResourceID eId = ImageResourceID.fromShort(id); 
 					

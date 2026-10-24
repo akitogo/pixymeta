@@ -205,7 +205,9 @@ public class ICCProfile extends Metadata {
 			case 0x6E6D636C:
 				return "'nmcl': named color profiles";
 			default:
-				throw new IllegalArgumentException("Unknown profile/device class: " + header.profileClass);
+				// A corrupt profile can carry any 4-byte class; return a descriptive fallback rather
+				// than throwing, so iterating the metadata of a malformed ICC profile does not abort.
+				return "unknown (0x" + Integer.toHexString(header.profileClass) + ")";
 		}
 	}
 	
@@ -252,7 +254,9 @@ public class ICCProfile extends Metadata {
 			case 3:
 				return "ICC-absolute colorimetric";
 			default:
-				throw new IllegalArgumentException("Unknown rendering intent: " + (header.renderingIntent&0x0000ffff));
+				// Fallback instead of throwing, so a malformed rendering-intent value does not abort
+				// iteration of the profile's metadata.
+				return "unknown (" + (header.renderingIntent&0x0000ffff) + ")";
 		}
 	}
 	

@@ -1,5 +1,59 @@
 # Changelog
 
+## 1.1.3 - 2026-10-24
+
+Second round of malformed-input hardening, completing the work started in 1.1.1 by covering the
+JPEG segment parsers and the embedded-metadata parsers (Photoshop IRB, IPTC, ICC, JPEG-embedded
+EXIF). Fuzzing the public `Metadata.readMetadata` entry point across 20,000 mutated inputs now
+produces zero uncaught `RuntimeException`/`Error`s: a corrupt file either parses, skips the bad
+element, or fails with a checked `IOException`. New JUnit tests cover one crafted input per finding
+(21 tests total).
+
+### Fixed
+- **JPEG segment readers no longer crash on malformed data.** `readDHT`/`readDQT`/`readSOF`/
+  `readSOS`/`readSegmentData` reject a segment length below 2 with `IOException` instead of
+  `new byte[len-2]` (`NegativeArraySizeException`). `DHTReader`, `DQTReader`, `SOFReader` and
+  `SOSReader` bounds-check every read against the segment body, so a truncated or garbage segment
+  stops cleanly rather than throwing `ArrayIndexOutOfBoundsException`.
+- **DQTReader quantization-table bug.** A C-style operator-precedence error
+  (`offset + de_zig_zag_order[j]<<1` parsed as `(offset + index) << 1`) read 16-bit table entries
+  from the wrong, often out-of-bounds, position; the shift is now parenthesised. An invalid
+  precision nibble is skipped instead of throwing `IllegalArgumentException` from `QTable`.
+- **SOF component count.** `numOfComponents` is read unsigned and clamped to the data actually
+  present, so a `0x80`+ value no longer yields `new Component[negative]`.
+- **SOS before SOF.** A scan header with no preceding frame header no longer throws
+  `IndexOutOfBoundsException` (`readers.get(-1)`); a null frame reader is tolerated.
+- **One malformed APPn segment no longer aborts the whole JPEG read.** The post-scan APPn loop
+  catches and skips a segment that is too short for its identifier or otherwise corrupt.
+- **ExtendedXMP reassembly is bounded and bounds-checked.** The 32-bit total length is rejected if
+  negative or absurd (preventing `OutOfMemoryError`), the per-segment destination window is
+  validated before `System.arraycopy`, and a missing GUID no longer NPEs.
+- **Photoshop IRB (8BIM) parsing is bounds-checked.** A truncated or oversized resource block is
+  skipped instead of throwing `ArrayIndexOutOfBounds`/`StringIndexOutOfBounds`/
+  `IllegalArgumentException` (from `ArrayUtils.subArray`).
+- **IPTC parsing is bounds-checked.** A dataset whose declared size runs past the buffer is
+  skipped, so iterating the result no longer throws from `IPTCDataSet`.
+- **JPEG-embedded EXIF thumbnail.** A missing length field no longer NPEs, and a negative/oversized
+  thumbnail length is rejected with `IOException` instead of `NegativeArraySizeException`/
+  `OutOfMemoryError`.
+- **ICC profile iteration.** An unknown profile/device class or rendering intent now yields a
+  descriptive fallback string instead of throwing `IllegalArgumentException` mid-iteration.
+- **EXIF field iteration.** A per-tag formatter that throws on a malformed field (wrong element
+  count, zero rational denominator, type mismatch) now falls back to the raw value instead of
+  aborting iteration of the whole EXIF block.
+
+### Changed
+- Format-rejection errors are now `IOException` rather than unchecked `RuntimeException`: a file
+  shorter than the 4-byte magic number (`PeekHeadInputStream`), an invalid PNG signature/header,
+  and an invalid TIFF byte order/identifier. Callers catching `IOException` now cover these cases.
+
+### Known limitations
+- A TIFF field declaring a large-but-legal element count (e.g. ~196,000, as a 16-bit transfer
+  function legitimately has) backed by the file-cache stream is read one element at a time and can
+  take a few seconds for a crafted ~1 MB file. The parse completes and is bounded; it is a
+  file-cache I/O cost, not a crash or unbounded memory use, and is not yet addressed because a fix
+  means reworking the stream's read buffering with a correctness risk to the core TIFF decoder.
+
 ## 1.1.2 - 2026-10-24
 
 Documentation only; no code or behavior changes.

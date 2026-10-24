@@ -78,6 +78,13 @@ public abstract class Exif extends Metadata {
 	private boolean isThumbnailRequired;
 	
 	public static final int FIRST_IFD_OFFSET = 0x08;
+
+	/**
+	 * Upper bound for an embedded EXIF thumbnail (bytes). The length comes from the file; any real
+	 * thumbnail is well under this, so the cap blocks a memory-exhaustion vector without affecting
+	 * valid images.
+	 */
+	private static final int MAX_THUMBNAIL_LENGTH = 64 * 1024 * 1024;
 	
 	// Obtain a logger instance
 	private static final Logger LOGGER = LoggerFactory.getLogger(Exif.class);
@@ -230,10 +237,18 @@ public abstract class Exif extends Metadata {
 			FieldType ftype = field.getType();				
 						
 			String tagString = null;
-			if(ftype == FieldType.SHORT || ftype == FieldType.SSHORT)
-				tagString = ftag.getFieldAsString(field.getDataAsLong());
-			else
-				tagString = ftag.getFieldAsString(field.getData());
+			try {
+				if(ftype == FieldType.SHORT || ftype == FieldType.SSHORT)
+					tagString = ftag.getFieldAsString(field.getDataAsLong());
+				else
+					tagString = ftag.getFieldAsString(field.getData());
+			} catch (Exception e) {
+				// A per-tag formatter can throw on a malformed field (wrong element count, a zero
+				// denominator in a rational, a type mismatch). Fall back to the raw string value so
+				// one bad field does not abort iterating the whole EXIF block.
+				LOGGER.warn("Falling back to raw value for tag {}: {}", ftag.getName(), e.toString());
+				tagString = null;
+			}
 			if(StringUtils.isNullOrEmpty(tagString))
 				entry.addEntry(new MetadataEntry(ftag.getName(), field.getDataAsString()));
 			else
@@ -314,16 +329,21 @@ public abstract class Exif extends Metadata {
 		    	if(field != null)
 		    		height = field.getDataAsLong()[0];
 		    	field = thumbnailIFD.getField(TiffTag.JPEG_INTERCHANGE_FORMAT);
-		    	if(field != null) { // JPEG format, save as JPEG
+		    	TiffField<?> lengthField = thumbnailIFD.getField(TiffTag.JPEG_INTERCHANGE_FORMAT_LENGTH);
+		    	if(field != null && lengthField != null) { // JPEG format, save as JPEG
 		    		int thumbnailOffset = field.getDataAsLong()[0];
-		    		field = thumbnailIFD.getField(TiffTag.JPEG_INTERCHANGE_FORMAT_LENGTH);
-		    		int thumbnailLen = field.getDataAsLong()[0];
+		    		// The length field may be absent (guarded above) and its value is file-supplied, so
+		    		// reject a negative or oversized length before new byte[thumbnailLen] turns it into a
+		    		// NegativeArraySizeException or OutOfMemoryError.
+		    		int thumbnailLen = lengthField.getDataAsLong()[0];
+		    		if(thumbnailLen < 0 || thumbnailLen > MAX_THUMBNAIL_LENGTH)
+		    			throw new IOException("Invalid EXIF thumbnail length: " + thumbnailLen);
 		    		exifIn.seek(thumbnailOffset);
 		    		byte[] thumbnailData = new byte[thumbnailLen];
 		    		exifIn.readFully(thumbnailData);
 		    		thumbnail = new ExifThumbnail(width, height, Thumbnail.DATA_TYPE_KJpegRGB, thumbnailData, thumbnailIFD);
-		    		containsThumbnail = true;				    
-		    	} else { // Uncompressed TIFF
+		    		containsThumbnail = true;
+		    	} else if(field == null) { // Uncompressed TIFF
 		    		field = thumbnailIFD.getField(TiffTag.STRIP_OFFSETS);
 		    		if(field == null) 
 		    			field = thumbnailIFD.getField(TiffTag.TILE_OFFSETS);

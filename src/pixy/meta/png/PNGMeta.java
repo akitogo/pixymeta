@@ -191,13 +191,13 @@ public class PNGMeta {
         long signature = IOUtils.readLongMM(is);
 
         if (signature != SIGNATURE) {
-       	 	throw new RuntimeException("Invalid PNG signature");
+       	 	throw new IOException("Invalid PNG signature");
         }   
 
         /** Read header */
         /** We are expecting IHDR */
         if ((IOUtils.readIntMM(is) != 13)||(IOUtils.readIntMM(is) != ChunkType.IHDR.getValue())) {
-            throw new RuntimeException("Invalid PNG header");
+            throw new IOException("Invalid PNG header");
         }     
         
         buf = new byte[13];

@@ -139,7 +139,7 @@ public class TIFFMeta {
 		} else {
 			rin.close();
 			rout.close();
-			throw new RuntimeException("Invalid TIFF byte order");
+			throw new IOException("Invalid TIFF byte order");
 	    } 
 		
 		rout.writeShort(endian);
@@ -151,7 +151,7 @@ public class TIFFMeta {
 		{
 		   rin.close();
 		   rout.close();
-		   throw new RuntimeException("Invalid TIFF identifier");
+		   throw new IOException("Invalid TIFF identifier");
 		}
 		
 		rout.writeShort(tiff_id);
@@ -1106,7 +1106,7 @@ public class TIFFMeta {
 		    rin.setReadStrategy(ReadStrategyII.getInstance());
 		} else {		
 			rin.close();
-			throw new RuntimeException("Invalid TIFF byte order");
+			throw new IOException("Invalid TIFF byte order");
 	    }
 		
 		// Read TIFF identifier
@@ -1116,7 +1116,7 @@ public class TIFFMeta {
 		
 		if(tiff_id!=0x2a) { //"*" 42 decimal
 			rin.close();
-			throw new RuntimeException("Invalid TIFF identifier");
+			throw new IOException("Invalid TIFF identifier");
 		}
 		
 		rin.seek(offset);

@@ -57,27 +57,30 @@ is not part of the published jar).
 Handling untrusted images
 ----------------------------------------
 This library parses image metadata, so in many deployments it is handed files from end users or
-the public web. As of 1.1.1 the readers are hardened against malformed and hostile input: a
-corrupt file fails with an `IOException` (or is skipped) rather than crashing the caller with an
-uncaught runtime exception or exhausting memory. Specifically:
+the public web. As of 1.1.1 (and extended in 1.1.3) the readers are hardened against malformed and
+hostile input: a corrupt file fails with an `IOException` (or the bad element is skipped) rather
+than crashing the caller with an uncaught runtime exception or exhausting memory. Specifically:
 
 - **XMP is parsed with a hardened XML reader.** DOCTYPE declarations are rejected and external
   entity and DTD resolution is disabled, so embedded XMP cannot trigger XML External Entity (XXE)
   file disclosure, server-side request forgery, or entity-expansion attacks.
-- **Length and count fields are validated before allocation.** PNG chunk lengths, TIFF field
-  counts, BMP palette sizes, and ICC tag tables taken from the file can no longer force a
-  multi-gigabyte allocation or a `NegativeArraySizeException` from a tiny file.
+- **Length and count fields are validated before allocation.** PNG chunk lengths, JPEG segment
+  lengths, TIFF field counts, BMP palette sizes, ICC tag tables, EXIF thumbnail lengths, and the
+  ExtendedXMP length taken from the file can no longer force a multi-gigabyte allocation or a
+  `NegativeArraySizeException` from a tiny file.
 - **Compressed text is bounded.** PNG `zTXt`, `iTXt`, and `iCCP` inflation stops at a fixed cap
   instead of expanding until the heap is exhausted (decompression-bomb protection).
-- **Truncated GIF streams terminate cleanly** instead of feeding an end-of-stream marker into an
-  array size.
+- **The JPEG, IRB, IPTC, ICC and GIF parsers tolerate truncation.** Malformed segments and
+  resource blocks are skipped instead of throwing `ArrayIndexOutOfBoundsException` and friends, and
+  one bad metadata block no longer aborts reading the rest of the file.
 - **Cyclic TIFF directory chains are detected** and stop, rather than looping until memory runs
   out.
 
-Callers reading untrusted input should still wrap `Metadata.readMetadata(...)` in a try/catch:
-treat any exception, not only `IOException`, as "unreadable metadata" and continue. Some
-deeply-embedded JPEG segment parsers can still throw a runtime exception on malformed input; see
-`CHANGELOG.md` for the current state.
+Callers reading untrusted input should wrap `Metadata.readMetadata(...)` in a try/catch. As of
+1.1.3 an unreadable file surfaces as an `IOException` (format rejections included), so catching
+`IOException` is sufficient in normal use; catching `Exception` is still prudent as defense in
+depth. See `CHANGELOG.md` for the one documented limitation (a crafted TIFF field with a very large
+element count can be slow to read).
 
 Where can I get the latest release?
 -----------------------------------
@@ -91,7 +94,7 @@ Releases of this fork are published to Maven Central:
 <dependency>
   <groupId>com.akitogo</groupId>
   <artifactId>pixymeta</artifactId>
-  <version>1.1.2</version>
+  <version>1.1.3</version>
 </dependency>
 ```
 

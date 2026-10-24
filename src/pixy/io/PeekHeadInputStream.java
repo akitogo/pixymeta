@@ -47,14 +47,13 @@ public class PeekHeadInputStream extends InputStream {
 	 * @param bytesToPeek number of bytes to peek
 	 * @param src The source InputStream to use
 	 */
-	public PeekHeadInputStream(InputStream src, int bytesToPeek) {
+	public PeekHeadInputStream(InputStream src, int bytesToPeek) throws IOException {
 		this.src = src;
 		this.buffer = new byte[bytesToPeek];
-		try {
-			IOUtils.readFully(src, buffer);
-		} catch(IOException ex) {
-			throw new RuntimeException("Error while reading bytes into buffer");
-		}
+		// A stream shorter than bytesToPeek (e.g. a file under 4 bytes) throws EOFException here.
+		// Propagate it as the IOException it is, rather than wrapping it in an unchecked
+		// RuntimeException, so callers that already handle IOException catch this case too.
+		IOUtils.readFully(src, buffer);
 	}
 	
 	public void close() throws IOException {

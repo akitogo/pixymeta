@@ -61,37 +61,42 @@ public class DHTReader implements Reader {
 		
 		while (len > 0)
 		{
+			// Guard every read against a truncated/malformed segment body so a corrupt DHT throws
+			// nothing and simply stops contributing tables (AIOOBE would otherwise escape).
+			if (offset >= data.length) return;
 			int HT_info = data[offset++];
-			
+
 			int HT_class = (HT_info>>4)&0x01;// 0=DC table, 1=AC table
 			int HT_destination_id = (HT_info&0x0f);// Huffman tables number
 			byte[] bits = new byte[16];
 			byte[] values;
-           
+
 			int count = 0;
-			
+
+			if (offset + 16 > data.length) return;
 			for (int i = 0; i < 16; i++)
 			{
 				bits[i] = data[offset + i];
 				count += (bits[i]&0xff);
 			}
-						
+
             if (count > 256)
 			{
-				LOGGER.error("invalid huffman code count!");			
+				LOGGER.error("invalid huffman code count!");
 				return;
 			}
-            
+
             offset += 16;
-            
+
+            if (offset + count > data.length) return;
             values = new byte[count];
-			
+
       		for (int i=0; i<count; i++)
 			{
                 values[i] = data[offset + i];
 			}
-      		
-      		offset += count;			
+
+      		offset += count;
 			len -= (1+16+count);
 			
 			HTable table = new HTable(HT_class, HT_destination_id, bits, values);

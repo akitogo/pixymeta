@@ -14,6 +14,9 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import pixy.io.IOUtils;
 import pixy.util.Reader;
 
@@ -27,6 +30,7 @@ public class DQTReader implements Reader {
 
 	private Segment segment;
 	private List<QTable> qTables = new ArrayList<QTable>(4);
+	private static final Logger LOGGER = LoggerFactory.getLogger(DQTReader.class);
 	
 	public DQTReader(Segment segment) throws IOException {
 		//
@@ -54,28 +58,40 @@ public class DQTReader implements Reader {
 		  
 		while(len > 0)
 		{
+			// Guard the info byte against a truncated body.
+			if (offset >= data.length) return;
 			int QT_info = data[offset++];
 			len--;
 		    int QT_precision = (QT_info>>4)&0x0f;
 		    int QT_index=(QT_info&0x0f);
+		    // Only precision 0 (8-bit) and 1 (16-bit) are valid. A corrupt nibble would otherwise
+		    // make numOfValues huge and QTable's constructor throw IllegalArgumentException.
+		    if (QT_precision != 0 && QT_precision != 1) {
+		    	LOGGER.error("invalid quantization table precision: {}", QT_precision);
+		    	return;
+		    }
 		    int numOfValues = 64 << QT_precision;
-		    
+		    // The 64 table entries occupy numOfValues bytes; stop if the body is too short.
+		    if (offset + numOfValues > data.length) return;
+
 		    int[] out = new int[64];
-		   
+
 		    // Read QT tables
     	    // 8 bit For precision value of 0
 		   	if(QT_precision == 0) {
 				for (int j = 0; j < 64; j++) {
-					out[j] = data[de_zig_zag_order[j] + offset]&0xff;			
+					out[j] = data[de_zig_zag_order[j] + offset]&0xff;
 			    }
-			} else { // 16 bit big-endian for precision value of 1								
+			} else { // 16 bit big-endian for precision value of 1
 				for (int j = 0; j < 64; j++) {
-					out[j] = (IOUtils.readUnsignedShortMM(data, offset + de_zig_zag_order[j]<<1));	
-				}				
+					// Parenthesise the shift: without it this parsed as (offset + index) << 1 due to
+					// Java operator precedence, reading from a wrong (often out-of-bounds) position.
+					out[j] = (IOUtils.readUnsignedShortMM(data, offset + (de_zig_zag_order[j]<<1)));
+				}
 			}
-		   	
+
 		   	qTables.add(new QTable(QT_precision, QT_index, out));
-		
+
 			len -= numOfValues;
 			offset += numOfValues;
 		}
