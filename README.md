@@ -91,7 +91,7 @@ Releases of this fork are published to Maven Central:
 <dependency>
   <groupId>com.akitogo</groupId>
   <artifactId>pixymeta</artifactId>
-  <version>1.1.1</version>
+  <version>1.1.2</version>
 </dependency>
 ```
 

@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.1.2 - 2026-10-24
+
+Documentation only; no code or behavior changes.
+
+### Fixed
+- Cleared the seven Javadoc lint warnings emitted during `mvn javadoc:jar`: literal `<`/`&`
+  characters in the `SmokeTest` usage comment and in `StringUtils` doc comments are now escaped
+  (or wrapped in `{@code}`), and a `{@link String#...}` tag that was broken across a line in
+  `StringUtils.containsRegex` is closed on one line. The generated API docs now render these
+  sections correctly.
+
 ## 1.1.1 - 2026-10-24
 
 Security hardening of the metadata readers against malformed and malicious input. These are

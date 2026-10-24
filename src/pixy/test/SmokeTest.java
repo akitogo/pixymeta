@@ -9,7 +9,7 @@ import pixy.meta.MetadataType;
  * Minimal regression-check harness for the "Unknown IPTC record" fix.
  *
  * Usage:
- *   java -cp pixymeta.jar:<deps> pixy.test.SmokeTest <path-to-jpeg>
+ *   java -cp pixymeta.jar:&lt;deps&gt; pixy.test.SmokeTest &lt;path-to-jpeg&gt;
  *
  * Prints "OK — N metadata entries" plus the entry types if Metadata.readMetadata
  * completes without throwing. Prints "THROWN: ..." with the exception class and

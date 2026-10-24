@@ -201,8 +201,8 @@ public class StringUtils {
 	/**
 	 * Regular expression version of the String contains method.
 	 * If used with a match from start or match from end regular expression,
-	 * it becomes the regular expression version of the {@link String#
-	 * startsWith(String prefix)} or {@link String#endsWith(String suffix)}
+	 * it becomes the regular expression version of the
+	 * {@link String#startsWith(String)} or {@link String#endsWith(String)}
 	 * methods.
 	 * 
 	 * @param input the input string
@@ -303,9 +303,9 @@ public class StringUtils {
 	 * 
      * <table border='1' cellpadding='3' cellspacing='0'>
      *  <tr><th> Character </th><th>Replacement</th></tr>
-     *  <tr><td> < </td><td> &lt; </td></tr>
-     *  <tr><td> > </td><td> &gt; </td></tr>
-     *  <tr><td> & </td><td> &amp; </td></tr>
+     *  <tr><td> &lt; </td><td> &amp;lt; </td></tr>
+     *  <tr><td> &gt; </td><td> &amp;gt; </td></tr>
+     *  <tr><td> &amp; </td><td> &amp;amp; </td></tr>
      *  <tr><td> " </td><td> &quot;</td></tr>
      *  <tr><td> \t </td><td> &#009;</td></tr>
      *  <tr><td> ! </td><td> &#033;</td></tr>
@@ -458,7 +458,7 @@ public class StringUtils {
 	}
 	
 	/**
-	 * Replaces "&" with its entity "&amp;" to make it a valid HTML link
+	 * Replaces {@code "&"} with its entity {@code "&amp;"} to make it a valid HTML link
 	 * 
 	 * @param queryString a URL string with a query string attached
 	 * @return a valid URL string to be used as a link
