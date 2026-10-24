@@ -29,7 +29,19 @@ public class TextReader implements Reader {
 	private String keyword;
 	private String text;
 	private Chunk chunk;
-	
+
+	/**
+	 * Upper bound (characters) on the text decompressed from a single zTXt/iTXt chunk. zlib can
+	 * amplify roughly 1000:1, so without a cap a small chunk can expand until the heap is
+	 * exhausted. Any real textual metadata is far below this limit.
+	 */
+	private static final int MAX_TEXT_LENGTH = 64 * 1024 * 1024;
+
+	private static void checkTextLimit(StringBuilder sb) throws IOException {
+		if(sb.length() > MAX_TEXT_LENGTH)
+			throw new IOException("Decompressed PNG text exceeds " + MAX_TEXT_LENGTH + " characters");
+	}
+
 	public TextReader() {
 		; // Default constructor
 	}
@@ -53,27 +65,32 @@ public class TextReader implements Reader {
    		
         switch (chunk.getChunkType()) {
 		   case ZTXT:
-		   {   					  
+		   {
 			   int keyword_len = 0;
-			   while(data[keyword_len]!=0) keyword_len++;
+			   while(keyword_len < data.length && data[keyword_len]!=0) keyword_len++;
+			   if(keyword_len + 2 > data.length)
+				   throw new IOException("Malformed zTXt chunk: truncated keyword");
 			   this.keyword = new String(data,0,keyword_len,"UTF-8");
-			
+
 			   InflaterInputStream ii = new InflaterInputStream(new ByteArrayInputStream(data,keyword_len+2, data.length-keyword_len-2));
 			   InputStreamReader ir = new InputStreamReader(ii,"UTF-8");
-               BufferedReader br = new BufferedReader(ir);                       
+               BufferedReader br = new BufferedReader(ir);
 			   String read = null;
                while((read=br.readLine()) != null) {
                   sb.append(read);
                   sb.append("\n");
-               }                  
+                  checkTextLimit(sb);
+               }
 			   br.close();
-	
+
                break;
            }
 		   case TEXT:
 		   {
-			   int keyword_len = 0;			   
-			   while(data[keyword_len]!=0) keyword_len++;
+			   int keyword_len = 0;
+			   while(keyword_len < data.length && data[keyword_len]!=0) keyword_len++;
+			   if(keyword_len + 1 > data.length)
+				   throw new IOException("Malformed tEXt chunk: truncated keyword");
 			   this.keyword = new String(data,0,keyword_len,"UTF-8");
 			   sb.append(new String(data,keyword_len+1,data.length-keyword_len-1,"UTF-8"));
 			
@@ -97,16 +114,20 @@ public class TextReader implements Reader {
 			   int trans_keyword_len = 0;
 			   int lang_flg_len = 0;
 			   boolean compr = false;
-			   while(data[keyword_len]!=0) keyword_len++;
+			   while(keyword_len < data.length && data[keyword_len]!=0) keyword_len++;
 			   sb.append(new String(data,0,keyword_len,"UTF-8"));
+			   // keyword NUL, compression flag, compression method, then language-tag NUL: at
+			   // least three more bytes must be present or the index walks off the array.
+			   if(keyword_len + 3 > data.length)
+				   throw new IOException("Malformed iTXt chunk: truncated header");
 			   if(data[++keyword_len]==1) compr = true;
 			   keyword_len++;//Skip the compression method byte.
-               while(data[++keyword_len]!=0) lang_flg_len++;
+               while(++keyword_len < data.length && data[keyword_len]!=0) lang_flg_len++;
 			   //////////////////////
 			   sb.append("(");
 			   if(lang_flg_len>0)
 				   sb.append(new String(data,keyword_len-lang_flg_len, lang_flg_len, "UTF-8"));
-			   while(data[++keyword_len]!=0) trans_keyword_len++;
+			   while(++keyword_len < data.length && data[keyword_len]!=0) trans_keyword_len++;
                if(trans_keyword_len>0) {
 				   sb.append(" ");
             	   sb.append(new String(data,keyword_len-trans_keyword_len, trans_keyword_len, "UTF-8"));
@@ -126,15 +147,18 @@ public class TextReader implements Reader {
 				   while((read=br.readLine()) != null) {
 					  sb.append(read);
 					  sb.append("\n");
+					  checkTextLimit(sb);
 				   }
-				  
+
 				   br.close();
 			   } else { //Uncompressed text
-				   sb.append(new String(data,keyword_len+1,data.length-keyword_len-1,"UTF-8"));
+				   if(keyword_len + 1 <= data.length)
+					   sb.append(new String(data,keyword_len+1,data.length-keyword_len-1,"UTF-8"));
 				   sb.append("\n");
 			   }
-			   
-			   sb.deleteCharAt(sb.length() - 1);
+
+			   if(sb.length() > 0)
+				   sb.deleteCharAt(sb.length() - 1);
 			   
 			   break;
 		   }			   

@@ -76,8 +76,21 @@ public class ProfileTagTable {
 	
 	public void read(byte[] data) {
 		int offset = ICCProfile.TAG_TABLE_OFFSET;
+		// The tag count and every (offset, length) pair below come straight from the file. Without
+		// validation a corrupt profile can declare a huge tag count, a negative/oversized data
+		// length (NegativeArraySizeException / OutOfMemoryError on new byte[dataLength]), or an
+		// out-of-range data offset (IndexOutOfBounds in arraycopy). Each entry is 12 bytes; clamp
+		// the count to what the buffer can actually hold and skip any entry whose slice is out of
+		// bounds, so a malformed profile yields fewer tags instead of an uncaught exception.
+		if(offset + 4 > data.length) {
+			tagCount = 0;
+			return;
+		}
 		tagCount = IOUtils.readIntMM(data, offset);
 		offset += 4;
+		int maxEntries = (data.length - offset) / 12;
+		if(tagCount < 0 || tagCount > maxEntries)
+			tagCount = maxEntries;
 		// Read each tag
 		for(int i = 0; i < tagCount; i++) {
 			int tagSignature = IOUtils.readIntMM(data, offset);
@@ -87,10 +100,17 @@ public class ProfileTagTable {
 			offset += 4;
 			int dataLength = IOUtils.readIntMM(data, offset);
 			offset += 4;
-			
+
+			// Validate the slice lies entirely within the profile data (guards against overflow
+			// in dataOffset + dataLength by using long arithmetic).
+			if(dataOffset < 0 || dataLength < 0 || (long) dataOffset + dataLength > data.length) {
+				LOGGER.warn("Skipping ICC tag with out-of-range data (offset={}, length={})", dataOffset, dataLength);
+				continue;
+			}
+
 			byte[] temp = new byte[dataLength];
 			System.arraycopy(data, dataOffset, temp, 0, temp.length);
-			
+
 			tagEntries.put(tagSignature, new TagEntry(tag.getValue(), dataOffset, dataLength, temp));
 		}
 	}

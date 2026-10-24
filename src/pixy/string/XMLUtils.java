@@ -72,9 +72,43 @@ public class XMLUtils {
 		parent.appendChild(doc.createTextNode(data));
 	}
 	
+	/**
+	 * Returns a {@link DocumentBuilderFactory} hardened against XML External Entity (XXE)
+	 * attacks: DOCTYPE declarations are rejected and external entity/DTD resolution is
+	 * disabled, so untrusted XMP metadata cannot read local files, open network
+	 * connections, or trigger entity-expansion resource exhaustion. Each feature is set
+	 * defensively because not every JAXP provider implements all of them.
+	 */
+	private static DocumentBuilderFactory newSecureDocumentBuilderFactory() {
+		DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
+		setFeatureQuietly(factory, "http://apache.org/xml/features/disallow-doctype-decl", true);
+		setFeatureQuietly(factory, "http://xml.org/sax/features/external-general-entities", false);
+		setFeatureQuietly(factory, "http://xml.org/sax/features/external-parameter-entities", false);
+		setFeatureQuietly(factory, "http://apache.org/xml/features/nonvalidating/load-external-dtd", false);
+		setFeatureQuietly(factory, javax.xml.XMLConstants.FEATURE_SECURE_PROCESSING, true);
+		factory.setXIncludeAware(false);
+		factory.setExpandEntityReferences(false);
+		try {
+			factory.setAttribute(javax.xml.XMLConstants.ACCESS_EXTERNAL_DTD, "");
+		} catch (IllegalArgumentException e) { /* attribute not supported by this provider */ }
+		try {
+			factory.setAttribute(javax.xml.XMLConstants.ACCESS_EXTERNAL_SCHEMA, "");
+		} catch (IllegalArgumentException e) { /* attribute not supported by this provider */ }
+		return factory;
+	}
+
+	private static void setFeatureQuietly(DocumentBuilderFactory factory, String feature, boolean value) {
+		try {
+			factory.setFeature(feature, value);
+		} catch (ParserConfigurationException e) {
+			// Feature not recognised by this provider; the remaining hardening still applies.
+			LOGGER.debug("XML parser does not support feature {}", feature);
+		}
+	}
+
 	// Create an empty Document node
 	public static Document createDocumentNode() {
-		DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
+		DocumentBuilderFactory factory = newSecureDocumentBuilderFactory();
 	    DocumentBuilder builder = null;
 	    
 		try {
@@ -92,7 +126,7 @@ public class XMLUtils {
 	
 	public static Document createXML(byte[] xml) {
 		//Get the DOM Builder Factory
-		DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
+		DocumentBuilderFactory factory = newSecureDocumentBuilderFactory();
 		//Get the DOM Builder
 		DocumentBuilder builder = null;
 		try {
@@ -116,7 +150,7 @@ public class XMLUtils {
 	
 	public static Document createXML(String xml) {
 		//Get the DOM Builder Factory
-		DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
+		DocumentBuilderFactory factory = newSecureDocumentBuilderFactory();
 		//Get the DOM Builder
 		DocumentBuilder builder = null;
 		try {

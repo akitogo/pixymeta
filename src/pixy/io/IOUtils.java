@@ -266,8 +266,12 @@ public class IOUtils {
 	}
 	
 	public static void skipFully(InputStream is, int n) throws IOException {
+		// A negative count comes only from a corrupt length/offset computation upstream; allocating
+		// new byte[n] would throw NegativeArraySizeException, so reject it as an IOException instead.
+		if (n < 0)
+			throw new IOException("Cannot skip a negative number of bytes: " + n);
 		readFully(is, new byte[n]);
-	}	
+	}
 	 
 	public static void write(OutputStream os, byte[] bytes) throws IOException {
 		os.write(bytes);

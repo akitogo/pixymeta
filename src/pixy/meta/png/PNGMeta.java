@@ -68,6 +68,21 @@ public class PNGMeta {
 	
 	/** PNG signature constant */
     private static final long SIGNATURE = 0x89504E470D0A1A0AL;
+
+	/**
+	 * Upper bound for a single PNG chunk's declared length (bytes). The PNG spec allows up to
+	 * 2^31-1, but this is a metadata reader and that ceiling is an easy memory-exhaustion vector
+	 * from a tiny file. 128 MB is far beyond any metadata-bearing chunk while still bounding the
+	 * worst-case allocation. {@link #readChunks} rejects anything larger.
+	 */
+	private static final int MAX_CHUNK_LENGTH = 128 * 1024 * 1024;
+
+	/**
+	 * Upper bound for the inflated size of a compressed chunk (zTXt/iTXt text, iCCP profile).
+	 * zlib can amplify ~1000:1, so an unbounded inflate turns a few KB into gigabytes. Metadata
+	 * payloads are far smaller than this cap.
+	 */
+	static final int MAX_DECOMPRESSED_SIZE = 64 * 1024 * 1024;
 	
     // Obtain a logger instance
  	private static final Logger LOGGER = LoggerFactory.getLogger(PNGMeta.class);
@@ -193,11 +208,18 @@ public class PNGMeta {
         while (true) {
         	data_len = IOUtils.readIntMM(is);
 	       	chunk_type = IOUtils.readIntMM(is);
-	   
+
 	       	if (chunk_type == ChunkType.IEND.getValue()) {
 	        	 list.add(new Chunk(ChunkType.IEND, data_len, new byte[0], IOUtils.readUnsignedIntMM(is)));
 	       		 break;
-	       	} 
+	       	}
+       		// A chunk length is a signed 32-bit read here. A negative value (top bit set) or an
+       		// absurdly large one from a corrupt/malicious file would otherwise be handed straight
+       		// to new byte[data_len], throwing NegativeArraySizeException or exhausting the heap
+       		// before a single byte is validated. Reject both up front.
+       		if (data_len < 0 || data_len > MAX_CHUNK_LENGTH) {
+       			throw new IOException("Invalid PNG chunk length: " + (data_len & 0xffffffffL));
+       		}
        		ChunkType chunkType = ChunkType.fromInt(chunk_type);
        		buf = new byte[data_len];
        		IOUtils.readFully(is, buf, 0, data_len);
@@ -213,17 +235,39 @@ public class PNGMeta {
    	
    	private static byte[] readICCProfile(byte[] buf) throws IOException {
 		int profileName_len = 0;
-		while(buf[profileName_len] != 0) profileName_len++;
+		// Guard the null-separator scan: a chunk with no NUL terminator would run off the end.
+		while(profileName_len < buf.length && buf[profileName_len] != 0) profileName_len++;
+		if(profileName_len + 2 > buf.length)
+			throw new IOException("Malformed iCCP chunk: missing profile name separator");
 		String profileName = new String(buf, 0, profileName_len, "UTF-8");
-		
+
 		InflaterInputStream ii = new InflaterInputStream(new ByteArrayInputStream(buf, profileName_len + 2, buf.length - profileName_len - 2));
 		LOGGER.info("ICCProfile name: {}", profileName);
-		 
-		byte[] icc_profile = IOUtils.readFully(ii, 4096);
+
+		// Cap the inflated output so a compression bomb cannot exhaust the heap.
+		byte[] icc_profile = readFullyCapped(ii, MAX_DECOMPRESSED_SIZE, "iCCP profile");
 		LOGGER.info("ICCProfile length: {}", icc_profile.length);
-	 		 
+
 		return icc_profile;
  	}
+
+	/**
+	 * Reads an input stream fully into a byte array, aborting with an {@link IOException} once the
+	 * accumulated output exceeds {@code maxBytes}. Used to bound decompression of untrusted data.
+	 */
+	static byte[] readFullyCapped(InputStream is, int maxBytes, String what) throws IOException {
+		java.io.ByteArrayOutputStream bout = new java.io.ByteArrayOutputStream();
+		byte[] buf = new byte[4096];
+		int total = 0;
+		int count;
+		while ((count = is.read(buf)) > 0) {
+			total += count;
+			if (total < 0 || total > maxBytes)
+				throw new IOException("Decompressed " + what + " exceeds " + maxBytes + " bytes");
+			bout.write(buf, 0, count);
+		}
+		return bout.toByteArray();
+	}
   	
    	public static Map<MetadataType, Metadata> readMetadata(InputStream is) throws IOException {
 		Map<MetadataType, Metadata> metadataMap = new HashMap<MetadataType, Metadata>();

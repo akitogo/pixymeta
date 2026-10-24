@@ -51,7 +51,33 @@ mvn clean package
 ```
 
 The jar lands in `target/`. Run `mvn clean install` to make it available to other local Maven
-projects.
+projects. `mvn test` runs the JUnit 5 test suite under `test/` (test-scoped dependency only; it
+is not part of the published jar).
+
+Handling untrusted images
+----------------------------------------
+This library parses image metadata, so in many deployments it is handed files from end users or
+the public web. As of 1.1.1 the readers are hardened against malformed and hostile input: a
+corrupt file fails with an `IOException` (or is skipped) rather than crashing the caller with an
+uncaught runtime exception or exhausting memory. Specifically:
+
+- **XMP is parsed with a hardened XML reader.** DOCTYPE declarations are rejected and external
+  entity and DTD resolution is disabled, so embedded XMP cannot trigger XML External Entity (XXE)
+  file disclosure, server-side request forgery, or entity-expansion attacks.
+- **Length and count fields are validated before allocation.** PNG chunk lengths, TIFF field
+  counts, BMP palette sizes, and ICC tag tables taken from the file can no longer force a
+  multi-gigabyte allocation or a `NegativeArraySizeException` from a tiny file.
+- **Compressed text is bounded.** PNG `zTXt`, `iTXt`, and `iCCP` inflation stops at a fixed cap
+  instead of expanding until the heap is exhausted (decompression-bomb protection).
+- **Truncated GIF streams terminate cleanly** instead of feeding an end-of-stream marker into an
+  array size.
+- **Cyclic TIFF directory chains are detected** and stop, rather than looping until memory runs
+  out.
+
+Callers reading untrusted input should still wrap `Metadata.readMetadata(...)` in a try/catch:
+treat any exception, not only `IOException`, as "unreadable metadata" and continue. Some
+deeply-embedded JPEG segment parsers can still throw a runtime exception on malformed input; see
+`CHANGELOG.md` for the current state.
 
 Where can I get the latest release?
 -----------------------------------
@@ -65,7 +91,7 @@ Releases of this fork are published to Maven Central:
 <dependency>
   <groupId>com.akitogo</groupId>
   <artifactId>pixymeta</artifactId>
-  <version>1.1.0</version>
+  <version>1.1.1</version>
 </dependency>
 ```
 

@@ -133,10 +133,19 @@ public class BMPMeta {
 		int colorsUsed = IOUtils.readInt(DTO.infoHeader, 32);
 		int bitsPerPixel = IOUtils.readShort(DTO.infoHeader, 14);
 		int dataOffset = IOUtils.readInt(DTO.fileHeader, 10);
-		int numOfColors = (colorsUsed == 0)?(1<<bitsPerPixel):colorsUsed;
+		// This method is only reached for palette images (bitsPerPixel <= 8), so the palette holds
+		// at most 2^8 = 256 entries. A corrupt file can set colorsUsed negative/huge or bitsPerPixel
+		// out of range, which would otherwise feed new byte[numOfColors*4] a negative or multi-GB
+		// size. Reject anything outside the legal range before allocating.
+		if(bitsPerPixel < 1 || bitsPerPixel > 8)
+			throw new IOException("Invalid BMP bit count for a palette image: " + bitsPerPixel);
+		int maxColors = 1 << bitsPerPixel;
+		int numOfColors = (colorsUsed == 0)?maxColors:colorsUsed;
+		if(numOfColors < 1 || numOfColors > maxColors)
+			throw new IOException("Invalid BMP palette size: " + colorsUsed);
 		byte palette[] = new byte[numOfColors*4];
-		DTO.colorPalette = new int[numOfColors];	
-     
+		DTO.colorPalette = new int[numOfColors];
+
 		IOUtils.readFully(is, palette);
 
         for(int i = 0; i < numOfColors; i++)
@@ -144,7 +153,9 @@ public class BMPMeta {
 			DTO.colorPalette[index++] = ((0xff<<24)|(palette[bindex]&0xff)|((palette[bindex+1]&0xff)<<8)|((palette[bindex+2]&0xff)<<16));
 			bindex += 4;
 		}
-		// There may be some extra bytes between colorPalette and actual image data
+		// There may be some extra bytes between colorPalette and actual image data. A corrupt
+		// dataOffset smaller than the header+palette would make this skip negative; skipFully now
+		// rejects that rather than allocating new byte[negative].
 		IOUtils.skipFully(is, dataOffset - numOfColors*4 - 54);
 	}
 	

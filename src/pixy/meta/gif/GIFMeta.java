@@ -210,7 +210,9 @@ public class GIFMeta {
 					if(Arrays.equals(xmp_id, temp)) {
 						ByteArrayOutputStream bout = new ByteArrayOutputStream();
 						len = is.read();
-						while(len != 0) {
+						// A block length of -1 means the stream ended inside the sub-block chain;
+						// stop rather than feed -1 into new byte[len] (NegativeArraySizeException).
+						while(len > 0) {
 							bout.write(len);
 							temp = new byte[len];
 							IOUtils.readFully(is, temp);
@@ -226,21 +228,24 @@ public class GIFMeta {
 					} else 
 						len = is.read(); // Block terminator					
 				} else if(func == 0xfe) { // Comment block
-					// Comment block
-					byte[] comment = new byte[len];
-					IOUtils.readFully(is, comment);
-					if(DTO.comments == null) DTO.comments = new Comments();
-					DTO.comments.addComment(comment);
-					// Comment: new String(comment)
+					// Comment block. A len of -1 (EOF) or 0 (empty) means there is nothing to read;
+					// guard before new byte[len] to avoid NegativeArraySizeException on truncation.
+					if(len > 0) {
+						byte[] comment = new byte[len];
+						IOUtils.readFully(is, comment);
+						if(DTO.comments == null) DTO.comments = new Comments();
+						DTO.comments.addComment(comment);
+						// Comment: new String(comment)
+					}
 					len = is.read();
 				}
 				// GIF87a specification mentions the repetition of multiple length
 				// blocks while GIF89a gives no specific description. For safety, here
 				// a while loop is used to check for block terminator!
-				while(len != 0) {
+				while(len > 0) {
 					IOUtils.skipFully(is, len);
 					len = is.read();// len=0, block terminator!
-				} 
+				}
 			}
 		} while(image_separator != 0x2c); // ","
 		

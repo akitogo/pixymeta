@@ -105,6 +105,22 @@ public class TIFFMeta {
 	public static final int OFFSET_TO_WRITE_FIRST_IFD_OFFSET = 0x04;
 	public static final int FIRST_WRITE_OFFSET = 0x08;
 	public static final int STREAM_HEAD = 0x00;
+
+	/**
+	 * Maximum number of IFDs to follow in a single image-file-directory chain. A well-formed TIFF
+	 * has a handful; a far larger number means a corrupt or deliberately cyclic chain.
+	 */
+	private static final int MAX_IFD_COUNT = 1024;
+
+	/**
+	 * Maximum element count accepted for a single IFD field before its value array is allocated.
+	 * TIFF stores the count in 4 bytes, so a malicious file can declare up to ~2 billion entries.
+	 * That is dangerous in two ways: the up-front array allocation, and the per-element read loop
+	 * below which seeks and reads each entry individually (expensive on the file-backed cache). A
+	 * genuine metadata field has at most a few hundred thousand entries, so 1M is a safe ceiling
+	 * that bounds both the allocation and the read time.
+	 */
+	private static final int MAX_IFD_ENTRY_COUNT = 1 << 20;
 	
 	// Obtain a logger instance
 	private static final Logger LOGGER = LoggerFactory.getLogger(TIFFMeta.class);
@@ -1150,9 +1166,12 @@ public class TIFFMeta {
 			rin.seek(offset);
 			int field_length = rin.readInt();
 			offset += 4;
-			if(field_length < 0) {
-				// Corrupt entry (count read as negative) - skip the value slot instead of
-				// blowing up with a NegativeArraySizeException on array allocation.
+			if(field_length < 0 || field_length > MAX_IFD_ENTRY_COUNT) {
+				// Corrupt entry: a count read as negative, or an absurdly large positive count a
+				// malicious file uses to force a multi-gigabyte array allocation before any byte is
+				// read. Skip the 4-byte value slot instead of blowing up with a
+				// NegativeArraySizeException/OutOfMemoryError. Capping here also keeps 2*field_length
+				// (the RATIONAL element count) from overflowing to a negative int below.
 				offset += 4;
 				continue;
 			}
@@ -1365,10 +1384,19 @@ public class TIFFMeta {
 					}
 					TiffField<int[]> ifdField = new IFDField(tag, ldata);
 					tiffIFD.addField(ifdField);
+					// Recurse into each referenced sub-IFD. Guard against an empty array (count 0 ->
+					// ldata[0] would be ArrayIndexOutOfBounds) and a self-referential pointer, and
+					// use ldata[ifd] rather than the repeated ldata[0] (the latter re-parsed the
+					// first sub-IFD N times). Wrap per entry so one bad sub-IFD does not abort the IFD.
 					for(int ifd = 0; ifd < ldata.length; ifd++) {
-						readIFD(tiffIFD, TiffTag.SUB_IFDS, TiffTag.class, rin, null, ldata[0]);
+						if(ldata[ifd] == 0 || ldata[ifd] == offset) continue;
+						try {
+							readIFD(tiffIFD, TiffTag.SUB_IFDS, TiffTag.class, rin, null, ldata[ifd]);
+						} catch(Exception e) {
+							LOGGER.warn("Skipping malformed TIFF sub-IFD at offset {}", ldata[ifd]);
+						}
 					}
-								
+
 					break;
 				default:
 					offset += 4;
@@ -1386,8 +1414,21 @@ public class TIFFMeta {
 	}
 	
 	private static void readIFDs(IFD parent, Tag parentTag, Class<? extends Tag> tagClass, List<IFD> list, int offset, RandomAccessInputStream rin) throws IOException {
-		// Read the IFDs into a list first	
+		// Read the IFDs into a list first. A malicious file can make an IFD's "next IFD" pointer
+		// refer back to itself or to an earlier IFD, which would loop forever and append a new IFD
+		// object each pass until the heap is exhausted. Track visited offsets and stop on a repeat,
+		// and cap the total number of IFDs as a second safety net.
+		java.util.Set<Integer> visited = new java.util.HashSet<Integer>();
+		int count = 0;
 		while (offset != 0)	{
+			if (!visited.add(offset)) {
+				LOGGER.warn("Ignoring cyclic TIFF IFD pointer at offset {}", offset);
+				break;
+			}
+			if (++count > MAX_IFD_COUNT) {
+				LOGGER.warn("Stopping after {} TIFF IFDs (suspected malformed chain)", MAX_IFD_COUNT);
+				break;
+			}
 			offset = readIFD(parent, parentTag, tagClass, rin, list, offset);
 		}
 	}

@@ -1,5 +1,68 @@
 # Changelog
 
+## 1.1.1 - 2026-10-24
+
+Security hardening of the metadata readers against malformed and malicious input. These are
+defensive fixes: well-formed files parse exactly as before (all bundled sample images are
+unaffected), while corrupt or hostile files now fail with an `IOException` or are skipped, rather
+than crashing the caller with an uncaught `RuntimeException`/`Error` or exhausting memory. A new
+JUnit 5 suite under `test/` covers one crafted input per finding; it is test-scoped and not part
+of the published jar.
+
+### Security
+- **XXE / external-entity protection in XMP parsing.** `XMLUtils` created its
+  `DocumentBuilderFactory` with no security configuration, so XMP metadata from an untrusted image
+  was parsed with DOCTYPE declarations and external entity/DTD resolution enabled. All three
+  factory sites now disallow DOCTYPE declarations, disable external general/parameter entities and
+  external DTD loading, enable secure processing, and clear the external-DTD/schema access
+  properties. This closes XML External Entity file disclosure, SSRF, and entity-expansion vectors.
+  The hardening is applied defensively so a non-JDK JAXP provider (e.g. an older Xerces shadowing
+  the JDK parser under Lucee) is covered too.
+
+### Fixed
+- **PNG chunk length no longer drives an unchecked allocation.** `PNGMeta.readChunks` allocated
+  `new byte[data_len]` directly from the 32-bit chunk length. A negative value threw
+  `NegativeArraySizeException` and a large positive value (up to ~2 GB) exhausted the heap from a
+  few-byte file. Lengths that are negative or above a 128 MB ceiling are now rejected with
+  `IOException`.
+- **PNG decompression bombs are capped.** `zTXt`/`iTXt` text and `iCCP` profile inflation appended
+  without limit, so a small compressed chunk could expand until the heap was exhausted. Inflation
+  now aborts with `IOException` past a 64 MB cap, and the null-separator scans in `TextReader`/
+  `readICCProfile` are bounds-checked (no more `ArrayIndexOutOfBoundsException` /
+  `StringIndexOutOfBoundsException` on truncated chunks).
+- **BMP palette and data-offset fields are validated.** `BMPMeta.readPalette` trusted the
+  file-supplied `colorsUsed`, `bitsPerPixel`, and `dataOffset`, allowing `NegativeArraySizeException`
+  (from integer overflow on `colorsUsed * 4` or a negative skip) or multi-gigabyte allocations.
+  These are now range-checked and rejected with `IOException`.
+- **GIF truncation no longer crashes.** `GIFMeta.readFrame` fed the result of `is.read()` (which is
+  `-1` at end of stream) into `new byte[len]` / `skipFully`, throwing `NegativeArraySizeException`
+  on a stream truncated inside an extension block. The sub-block loops now treat `-1` as a
+  terminator, and `IOUtils.skipFully` rejects a negative count.
+- **ICC tag table is bounds-checked.** `ProfileTagTable.read` looped over a file-supplied tag count
+  and did `new byte[dataLength]` + `System.arraycopy` with a file-supplied offset and length,
+  allowing `NegativeArraySizeException`, `OutOfMemoryError`, and `IndexOutOfBoundsException`. The
+  tag count is clamped to what the buffer can hold and any tag whose data slice falls outside the
+  profile is skipped.
+- **Cyclic TIFF IFD chains no longer loop forever.** `TIFFMeta.readIFDs` followed the "next IFD"
+  pointer with no cycle detection, so an IFD pointing back at itself (or an earlier IFD) looped and
+  appended IFD objects until memory was exhausted. Visited offsets are now tracked and a repeat
+  stops the walk, with a 1024-IFD safety cap. The `IFD`-type sub-directory recursion is likewise
+  guarded against self-reference and empty counts, and now reads each referenced sub-IFD (it
+  previously re-read the first one).
+- **TIFF field counts are capped.** An IFD entry could declare up to ~2 billion elements, forcing a
+  huge array allocation (and, for `RATIONAL`, a `2 * count` sign overflow) before any byte was
+  read. Counts above 1,048,576 are now skipped; this clears the largest legitimate fields (a 16-bit
+  transfer function is 196,608 entries) while blocking the allocation bomb.
+
+### Known limitations
+- Some deeply-embedded JPEG segment parsers (`DHTReader`, `DQTReader`, `SOFReader`) and parts of the
+  Photoshop IRB / IPTC / JPEG-embedded EXIF thumbnail paths can still throw an uncaught runtime
+  exception on malformed input. These produce a crash, not information disclosure or unbounded
+  memory use. Callers reading untrusted input should catch broadly, not only `IOException`.
+- A TIFF field declaring a large-but-legal element count (e.g. ~196,000) backed by the file-cache
+  stream is read one element at a time and can take several seconds for a crafted ~1 MB file. This
+  is a parse-time (not memory or crash) cost in the I/O layer and is not yet addressed.
+
 ## 1.1.0 - 2026-10-22
 
 First release of the akitogo fork, published to Maven Central as `com.akitogo:pixymeta`.
