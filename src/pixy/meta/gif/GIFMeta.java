@@ -13,6 +13,7 @@
  *
  * Who   Date       Description
  * ====  =========  ======================================================
+ * AK    26Oct2026  Added removeMetadata()
  * WY    06Apr2016  Rewrite insertXMPApplicationBlock() to leverage GifXMP
  * WY    16Sep2015  Added insertComment() to insert comment block
  * WY    06Jul2015  Added insertXMP(InputSream, OutputStream, XMP)
@@ -28,9 +29,12 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
+import pixy.meta.icc.ICCProfile;
 import pixy.meta.image.Comments;
 import pixy.meta.xmp.XMP;
 import pixy.meta.Metadata;
@@ -323,6 +327,140 @@ public class GIFMeta {
 			DTO.metadataMap.put(MetadataType.COMMENT, DTO.comments);		
 			
 		return DTO.metadataMap;		
+	}
+	
+	public static Map<MetadataType, Metadata> removeMetadata(InputStream is, OutputStream os, MetadataType ... metadataTypes) throws IOException {
+		return removeMetadata(new HashSet<MetadataType>(Arrays.asList(metadataTypes)), is, os);
+	}
+	
+	/**
+	 * Removes metadata blocks: comment extensions (COMMENT), the "XMP DataXMP" application
+	 * extension (XMP) and the "ICCRGBG1012" application extension (ICC_PROFILE). Other types are not
+	 * stored in GIF and ignored. Frames and all other blocks are copied unchanged.
+	 * 
+	 * @return the removed metadata
+	 * @throws IOException if the stream is not a GIF or is truncated inside a block
+	 */
+	public static Map<MetadataType, Metadata> removeMetadata(Set<MetadataType> metadataTypes, InputStream is, OutputStream os) throws IOException {
+		Map<MetadataType, Metadata> removed = new HashMap<MetadataType, Metadata>();
+		Comments comments = null;
+		byte[] header = new byte[6];
+		IOUtils.readFully(is, header);
+		if(header[0] != 'G' || header[1] != 'I' || header[2] != 'F')
+			throw new IOException("Invalid GIF signature");
+		byte[] lsd = new byte[7];
+		IOUtils.readFully(is, lsd);
+		os.write(header);
+		os.write(lsd);
+		if((lsd[4]&0x80) == 0x80) // Global color table
+			copyFully(is, os, 3*(1 << ((lsd[4]&0x07)+1)));
+		
+		while(true) {
+			int introducer = is.read();
+			if(introducer == -1) break; // Missing trailer, keep what was there
+			if(introducer == IMAGE_TRAILER) {
+				os.write(introducer);
+				break;
+			}
+			if(introducer == IMAGE_SEPARATOR) {
+				os.write(introducer);
+				byte[] descriptor = new byte[9];
+				IOUtils.readFully(is, descriptor);
+				os.write(descriptor);
+				if((descriptor[8]&0x80) == 0x80) // Local color table
+					copyFully(is, os, 3*(1 << ((descriptor[8]&0x07)+1)));
+				copyFully(is, os, 1); // LZW minimum code size
+				copySubBlocks(is, os);
+				continue;
+			}
+			if(introducer != EXTENSION_INTRODUCER)
+				throw new IOException("Invalid GIF block introducer: 0x" + Integer.toHexString(introducer));
+			int label = readByte(is);
+			if(label == (COMMENT_EXTENSION_LABEL&0xff) && metadataTypes.contains(MetadataType.COMMENT)) {
+				if(comments == null) comments = new Comments();
+				comments.addComment(subBlockData(readSubBlocks(is)));
+				continue;
+			}
+			if(label == (APPLICATION_EXTENSION_LABEL&0xff)) {
+				int idLength = readByte(is);
+				byte[] id = new byte[idLength];
+				IOUtils.readFully(is, id);
+				byte[] raw = readSubBlocks(is);
+				String application = new String(id, "ISO-8859-1");
+				if(application.equals("XMP DataXMP") && metadataTypes.contains(MetadataType.XMP)) {
+					// The packet is stored as raw bytes followed by a 257 byte "magic trailer" that
+					// makes it parse as sub-blocks, see readFrame()
+					if(raw.length > 257) removed.put(MetadataType.XMP, new GifXMP(ArrayUtils.subArray(raw, 0, raw.length - 257)));
+					continue;
+				}
+				if(application.equals("ICCRGBG1012") && metadataTypes.contains(MetadataType.ICC_PROFILE)) {
+					byte[] profile = subBlockData(raw);
+					if(profile.length > 0) removed.put(MetadataType.ICC_PROFILE, new ICCProfile(profile));
+					continue;
+				}
+				os.write(EXTENSION_INTRODUCER);
+				os.write(label);
+				os.write(idLength);
+				os.write(id);
+				os.write(raw);
+				os.write(0);
+				continue;
+			}
+			os.write(EXTENSION_INTRODUCER);
+			os.write(label);
+			copySubBlocks(is, os);
+		}
+		if(comments != null)
+			removed.put(MetadataType.COMMENT, comments);
+		
+		return removed;
+	}
+	
+	private static int readByte(InputStream is) throws IOException {
+		int b = is.read();
+		if(b == -1) throw new IOException("Truncated GIF");
+		return b;
+	}
+	
+	private static void copyFully(InputStream is, OutputStream os, int length) throws IOException {
+		byte[] buf = new byte[length];
+		IOUtils.readFully(is, buf);
+		os.write(buf);
+	}
+	
+	// Copies a sub-block chain including its 0 terminator
+	private static void copySubBlocks(InputStream is, OutputStream os) throws IOException {
+		int len;
+		while((len = readByte(is)) > 0) {
+			os.write(len);
+			copyFully(is, os, len);
+		}
+		os.write(0);
+	}
+	
+	// Reads a sub-block chain, keeping the length bytes but not the 0 terminator
+	private static byte[] readSubBlocks(InputStream is) throws IOException {
+		ByteArrayOutputStream bout = new ByteArrayOutputStream();
+		int len;
+		while((len = readByte(is)) > 0) {
+			bout.write(len);
+			byte[] block = new byte[len];
+			IOUtils.readFully(is, block);
+			bout.write(block);
+		}
+		return bout.toByteArray();
+	}
+	
+	// The payload of a sub-block chain read by readSubBlocks(), without the length bytes
+	private static byte[] subBlockData(byte[] raw) {
+		ByteArrayOutputStream bout = new ByteArrayOutputStream(raw.length);
+		int offset = 0;
+		while(offset < raw.length) {
+			int len = raw[offset]&0xff;
+			bout.write(raw, offset + 1, Math.min(len, raw.length - offset - 1));
+			offset += len + 1;
+		}
+		return bout.toByteArray();
 	}
 	
 	private GIFMeta() {}

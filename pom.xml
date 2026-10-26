@@ -4,11 +4,11 @@
 
   <groupId>com.akitogo</groupId>
   <artifactId>pixymeta</artifactId>
-  <version>1.1.3</version>
+  <version>1.2.0</version>
   <packaging>jar</packaging>
 
   <name>PIXYMETA Java metadata library</name>
-  <description>Pure Java image metadata (EXIF, IPTC, XMP, ICC, Photoshop IRB) read/write library for JPEG, TIFF, PNG and GIF. Maintained fork of dragon66/pixymeta (Java 21, SLF4J 2, bug fixes).</description>
+  <description>Pure Java image metadata (EXIF incl. camera maker notes, IPTC, XMP, ICC, Photoshop IRB) read/write library for JPEG, TIFF, PNG, GIF and WebP. Maintained fork of dragon66/pixymeta (Java 21, SLF4J 2, bug fixes).</description>
   <url>https://github.com/akitogo/pixymeta</url>
   <inceptionYear>2015</inceptionYear>
 
@@ -69,6 +69,14 @@
       <version>2.0.17</version>
       <scope>test</scope>
     </dependency>
+    <!-- Independent reference parser, test scope only: the cross-validation tests read what
+         PIXYMETA writes back with metadata-extractor. It is never part of the published jar. -->
+    <dependency>
+      <groupId>com.drewnoakes</groupId>
+      <artifactId>metadata-extractor</artifactId>
+      <version>2.19.0</version>
+      <scope>test</scope>
+    </dependency>
     <dependency>
       <groupId>org.junit.jupiter</groupId>
       <artifactId>junit-jupiter</artifactId>
@@ -80,7 +88,19 @@
   <build>
     <sourceDirectory>src</sourceDirectory>
     <testSourceDirectory>test</testSourceDirectory>
-    <plugins>
+    <resources>
+      <!-- License and attribution files, required for the Apache-2.0 derived maker note code -->
+      <resource>
+        <directory>${project.basedir}</directory>
+        <targetPath>META-INF</targetPath>
+        <includes>
+          <include>LICENSE</include>
+          <include>NOTICE</include>
+          <include>licenses/*</include>
+        </includes>
+      </resource>
+    </resources>
+<plugins>
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-compiler-plugin</artifactId>

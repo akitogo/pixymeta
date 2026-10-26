@@ -70,6 +70,13 @@ public enum ImageType {
 		}
 	},
 	
+	WEBP("WebP") {
+		@Override
+		public String getExtension() {
+			return "webp";
+		}
+	},
+	
     PCX("Pcx") { 
 		@Override
 		public String getExtension() {

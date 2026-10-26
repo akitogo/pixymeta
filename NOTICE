@@ -1,0 +1,17 @@
+PIXYMETA
+Copyright (C) 2014-2019 Wen Yu, and the contributors of this fork (akitogo).
+Licensed under the Eclipse Public License v1.0, see LICENSE.
+
+This product includes software derived from metadata-extractor
+(https://github.com/drewnoakes/metadata-extractor),
+Copyright 2002-2019 Drew Noakes and contributors,
+licensed under the Apache License, Version 2.0 (see licenses/metadata-extractor-LICENSE.txt).
+
+The derived parts are:
+  - src/pixy/meta/exif/makernote/MakerNoteTagNames.java: maker note tag names, generated
+    from metadata-extractor's *MakernoteDirectory classes by tools/gen_makernote_tags.py
+  - src/pixy/meta/exif/makernote/MakerNoteReader.java: the maker note detection rules
+    (vendor signatures, IFD start and offset base), ported from ExifTiffHandler
+
+metadata-extractor itself is used as a test dependency only and is not distributed with
+PIXYMETA.

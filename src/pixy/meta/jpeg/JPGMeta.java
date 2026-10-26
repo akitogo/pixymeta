@@ -1720,9 +1720,7 @@ public class JPGMeta {
 			if(nextByte == 0xff) {
 				nextByte = IOUtils.read(is);
 				
-				if (nextByte == -1) {
-					throw new IOException("Premature end of SOS segment!");					
-				}								
+				if (nextByte == -1) break;								
 				
 				if (nextByte != 0x00) {
 					marker = (short)((0xff<<8)|nextByte);
@@ -1745,7 +1743,11 @@ public class JPGMeta {
 		}
 		
 		if (nextByte == -1) {
-			throw new IOException("Premature end of SOS segment!");
+			// Truncated file: the scan data runs to the end of the stream without an EOI marker.
+			// All metadata segments precede the scan, so treat this as the end of the image (as
+			// other readers do) instead of failing the whole read.
+			LOGGER.warn("JPEG ends inside the scan data without an EOI marker");
+			return Marker.EOI.getValue();
 		}
 
 		return marker;

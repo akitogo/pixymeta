@@ -36,10 +36,33 @@ Image metadata manipulation:
    * Insert IRB into JPEG via APP13 segment
    * Insert IRB into TIFF via tag PHOTOSHOP.
    * Extract IRB data from both JPEG and TIFF.
-- JPEG, GIF, PNG, TIFF XMP metadata support
-   * Insert XMP metada into JPEG, GIF, PNG, and TIFF image
-   * Extract XMP metadata from JPEG, GIF, PNG, and TIFF image
+- JPEG, GIF, PNG, TIFF, WebP XMP metadata support
+   * Insert XMP metada into JPEG, GIF, PNG, TIFF and WebP image
+   * Extract XMP metadata from JPEG, GIF, PNG, TIFF and WebP image
    * In case of JPEG, handle normal XMP and extendedXMP which cannot fit into one APP1 segment
+- PNG and GIF metadata removal
+   * `Metadata.removeMetadata` removes EXIF (`eXIf`), XMP, ICC profiles (`iCCP`), IPTC/Photoshop
+     raw profiles, comments, all text chunks (`PNG_TEXTUAL`) and `tIME` from PNG, and comments,
+     XMP and ICC profiles from GIF; image data (every GIF frame) is copied unchanged
+- WebP metadata support
+   * Read, insert and remove EXIF, XMP and ICC profiles in lossy, lossless, alpha and animated WebP
+   * A simple WebP file is converted to the extended format (a `VP8X` header is added) when
+     metadata is inserted; the image data is copied unchanged
+   * Metadata only: PIXYMETA does not encode or decode WebP images (converting e.g. a JPEG to
+     WebP needs a separate encoder such as `cwebp`)
+   * WebP has no place for IPTC, Photoshop IRB or comments, so `insertIPTC`, `insertIRB`,
+     `insertIRBThumbnail` and `insertComments` are not supported; store such fields as XMP instead.
+     As for every format, an unsupported call logs a message and copies the image to the output
+     stream unchanged
+   * An EXIF thumbnail cannot be generated from a WebP image; `insertExif` writes a thumbnail only
+     if the `Exif` instance already holds one
+- EXIF maker notes (read-only decoding)
+   * `Exif.getMakerNote()` decodes the vendor maker note of Canon, Nikon, Sony, Olympus/OM System,
+     Fujifilm, Panasonic/Leica, Pentax, Casio, Apple, Samsung, Sanyo, Sigma, Ricoh, Kyocera, DJI,
+     Epson, Agfa and Minolta cameras into named tags, and the decoded tags are listed when
+     iterating the EXIF metadata
+   * Rewriting EXIF keeps the maker note readable: offsets that vendors store relative to the
+     TIFF header are adjusted when the maker note moves
 
 
 How to compile
@@ -51,8 +74,18 @@ mvn clean package
 ```
 
 The jar lands in `target/`. Run `mvn clean install` to make it available to other local Maven
-projects. `mvn test` runs the JUnit 5 test suite under `test/` (test-scoped dependency only; it
-is not part of the published jar).
+projects. `mvn test` runs the JUnit 5 test suite under `test/` (test-scoped dependencies only;
+they are not part of the published jar).
+
+The tests cross-validate PIXYMETA against [metadata-extractor](https://github.com/drewnoakes/metadata-extractor),
+an independent metadata reader used in test scope only: everything PIXYMETA writes must read back
+there with the same values, and what both libraries read from the sample images must agree. The
+same checks can be run over any directory of images, for example a checkout of
+[metadata-extractor-images](https://github.com/drewnoakes/metadata-extractor-images):
+
+```bash
+mvn test -Dtest=CorpusCrossValidationTest -Dpixymeta.corpus=/path/to/images
+```
 
 Handling untrusted images
 ----------------------------------------
@@ -94,7 +127,7 @@ Releases of this fork are published to Maven Central:
 <dependency>
   <groupId>com.akitogo</groupId>
   <artifactId>pixymeta</artifactId>
-  <version>1.1.3</version>
+  <version>1.2.0</version>
 </dependency>
 ```
 
@@ -110,6 +143,10 @@ Credits
 PIXYMETA was originally written by Wen Yu ([dragon66](https://github.com/dragon66),
 yuwen_66@yahoo.com) as the metadata part of the icafe project. This fork is maintained by
 [akitogo](https://www.akitogo.com).
+
+The maker note tag names and vendor detection rules are derived from
+[metadata-extractor](https://github.com/drewnoakes/metadata-extractor) by Drew Noakes and
+contributors (Apache License 2.0); see [NOTICE](NOTICE).
 
 [wiki]:https://github.com/dragon66/pixymeta/wiki
 [Open]:https://github.com/akitogo/pixymeta/issues/new

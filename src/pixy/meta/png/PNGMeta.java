@@ -27,8 +27,11 @@ import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.ArrayList;
@@ -166,7 +169,8 @@ public class PNGMeta {
 	    	Chunk chunk = itr.next();
 	    	if(chunk.getChunkType() == ChunkType.ITXT) {
 	    		TextReader reader = new TextReader(chunk);
-				if(reader.getKeyword().equals("XML:com.adobe.xmp")); // We found XMP data
+	    		// Only the XMP packet is replaced; other iTXt chunks (title, comments...) are kept
+				if(reader.getKeyword().equals("XML:com.adobe.xmp")) // We found XMP data
 					itr.remove();
 	    	}
 	    }
@@ -270,8 +274,15 @@ public class PNGMeta {
 	}
   	
    	public static Map<MetadataType, Metadata> readMetadata(InputStream is) throws IOException {
+		Map<MetadataType, Metadata> metadataMap = readMetadata(readChunks(is));
+		is.close();
+		
+		return metadataMap;
+	}
+   	
+   	// Interprets the metadata held by the given chunks
+   	private static Map<MetadataType, Metadata> readMetadata(List<Chunk> chunks) throws IOException {
 		Map<MetadataType, Metadata> metadataMap = new HashMap<MetadataType, Metadata>();
-		List<Chunk> chunks = readChunks(is);
 		Iterator<Chunk> iter = chunks.iterator();
 		TextualChunks textualChunk = null;
 		while (iter.hasNext()) {
@@ -340,10 +351,81 @@ public class PNGMeta {
 				}
 			}
 		}
-			
-		is.close();
 		
 		return metadataMap;
+	}
+	
+	public static Map<MetadataType, Metadata> removeMetadata(InputStream is, OutputStream os, MetadataType ... metadataTypes) throws IOException {
+		return removeMetadata(new HashSet<MetadataType>(Arrays.asList(metadataTypes)), is, os);
+	}
+	
+	/**
+	 * Removes metadata chunks. The types map to chunks as follows:
+	 * <ul>
+	 * <li>EXIF: eXIf, and "Raw profile type exif" text chunks</li>
+	 * <li>XMP: the "XML:com.adobe.xmp" iTXt chunk</li>
+	 * <li>ICC_PROFILE: iCCP</li>
+	 * <li>IPTC, PHOTOSHOP_IRB: "Raw profile type iptc" text chunks</li>
+	 * <li>COMMENT: "Comment" text chunks</li>
+	 * <li>PNG_TEXTUAL: all tEXt, zTXt and iTXt chunks, including the ones above</li>
+	 * <li>PNG_TIME: tIME</li>
+	 * </ul>
+	 * Image data and all other chunks are copied unchanged.
+	 * 
+	 * @return the removed metadata, as readMetadata() reports it, or an empty map if the removed
+	 *         chunks are too corrupt to parse
+	 */
+	public static Map<MetadataType, Metadata> removeMetadata(Set<MetadataType> metadataTypes, InputStream is, OutputStream os) throws IOException {
+		List<Chunk> chunks = readChunks(is);
+		List<Chunk> removed = new ArrayList<Chunk>();
+		Iterator<Chunk> iter = chunks.iterator();
+		while(iter.hasNext()) {
+			Chunk chunk = iter.next();
+			if(isRemoved(chunk, metadataTypes)) {
+				removed.add(chunk);
+				iter.remove();
+			}
+		}
+		IOUtils.writeLongMM(os, SIGNATURE);
+		serializeChunks(chunks, os);
+		
+		try {
+			return readMetadata(removed);
+		} catch(IOException e) {
+			// The image was written; corrupt metadata that was removed (e.g. an iCCP chunk that
+			// does not inflate) just can't be reported back
+			LOGGER.warn("Removed PNG metadata could not be parsed: {}", e.getMessage());
+			return Collections.emptyMap();
+		}
+	}
+	
+	private static boolean isRemoved(Chunk chunk, Set<MetadataType> types) {
+		ChunkType type = chunk.getChunkType();
+		switch(type) {
+			case EXIF: return types.contains(MetadataType.EXIF);
+			case ICCP: return types.contains(MetadataType.ICC_PROFILE);
+			case TIME: return types.contains(MetadataType.PNG_TIME);
+			case TEXT:
+			case ZTXT:
+			case ITXT:
+				if(types.contains(MetadataType.PNG_TEXTUAL)) return true;
+				String keyword = textKeyword(chunk);
+				if(keyword.equals("XML:com.adobe.xmp")) return types.contains(MetadataType.XMP);
+				if(keyword.equals("Raw profile type exif")) return types.contains(MetadataType.EXIF);
+				if(keyword.equals("Raw profile type iptc")) return types.contains(MetadataType.IPTC) || types.contains(MetadataType.PHOTOSHOP_IRB);
+				if(keyword.equals("Comment")) return types.contains(MetadataType.COMMENT);
+				return false;
+			default:
+				return false;
+		}
+	}
+	
+	// The keyword of tEXt, zTXt and iTXt chunks is the Latin-1 text up to the first NUL
+	private static String textKeyword(Chunk chunk) {
+		byte[] data = chunk.getData();
+		int length = 0;
+		while(length < data.length && data[length] != 0) length++;
+		return new String(data, 0, length, StandardCharsets.ISO_8859_1);
 	}
   	
 	public static List<Chunk> removeChunks(List<Chunk> chunks, ChunkType chunkType) {

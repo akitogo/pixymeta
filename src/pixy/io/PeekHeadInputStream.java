@@ -13,6 +13,7 @@
  *
  * Who   Date       Description
  * ====  =========  ==============================================================
+ * AK    26Oct2026  Added a variable length peek so a short stream can still be sniffed
  * WY    26Sep2015  Initial creation
  */
 
@@ -54,6 +55,38 @@ public class PeekHeadInputStream extends InputStream {
 		// Propagate it as the IOException it is, rather than wrapping it in an unchecked
 		// RuntimeException, so callers that already handle IOException catch this case too.
 		IOUtils.readFully(src, buffer);
+	}
+	
+	/**
+	 * Peeks up to maxBytesToPeek bytes, but accepts a shorter stream as long as it has at least
+	 * minBytesToPeek bytes. Use {@link #getPeekLength()} to find out how many were peeked.
+	 * 
+	 * @param src The source InputStream to use
+	 * @param minBytesToPeek minimum number of bytes the stream must have
+	 * @param maxBytesToPeek number of bytes to peek if available
+	 */
+	public PeekHeadInputStream(InputStream src, int minBytesToPeek, int maxBytesToPeek) throws IOException {
+		if(minBytesToPeek > maxBytesToPeek)
+			throw new IllegalArgumentException("Minimum peek length larger than maximum");
+		this.src = src;
+		byte[] head = new byte[maxBytesToPeek];
+		int n = 0;
+		while(n < maxBytesToPeek) {
+			int count = src.read(head, n, maxBytesToPeek - n);
+			if(count < 0) break;
+			n += count;
+		}
+		// Same contract as the fixed length constructor: too short a stream is an IOException
+		if(n < minBytesToPeek) throw new EOFException();
+		this.buffer = (n == maxBytesToPeek) ? head : ArrayUtils.subArray(head, 0, n);
+	}
+	
+	/**
+	 * @return the number of bytes available to {@link #peek(int)}
+	 */
+	public int getPeekLength() throws IOException {
+		ensureOpen();
+		return buffer.length;
 	}
 	
 	public void close() throws IOException {
@@ -101,8 +134,10 @@ public class PeekHeadInputStream extends InputStream {
 		} else if(position + len > buffer.length) {
 			int bytesAvailable = buffer.length - position;
 			System.arraycopy(buffer, position, b, off, bytesAvailable);
-			position += bytesAvailable;			
-			return bytesAvailable + src.read(b, off + bytesAvailable, len - bytesAvailable);
+			position += bytesAvailable;
+			// src returns -1 at end of stream; don't let that eat one of the buffered bytes
+			int count = src.read(b, off + bytesAvailable, len - bytesAvailable);
+			return bytesAvailable + Math.max(count, 0);
 		}
 		else {
 			System.arraycopy(buffer, position, b, off, len);

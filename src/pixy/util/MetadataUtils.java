@@ -62,8 +62,16 @@ public class MetadataUtils {
 	private static byte[] JPG = {(byte)0xff, (byte)0xd8, (byte)0xff};
 	private static byte[] PCX = {0x0a};
 	private static byte[] JPG2000 = {0x00, 0x00, 0x00, 0x0C};
+	private static byte[] RIFF = {0x52, 0x49, 0x46, 0x46}; // RIFF
+	private static byte[] WEBP = {0x57, 0x45, 0x42, 0x50}; // WEBP, at offset 8 of a RIFF file
 	
 	public static final int IMAGE_MAGIC_NUMBER_LEN = 4;
+	/**
+	 * Number of header bytes needed to tell all supported formats apart. Most are identified by
+	 * the first IMAGE_MAGIC_NUMBER_LEN bytes, but a RIFF container needs its form type at offset
+	 * 8 to tell WebP from WAV or AVI.
+	 */
+	public static final int IMAGE_HEADER_PEEK_LEN = 12;
 	
 	// Obtain a logger instance
 	private static final Logger LOGGER = LoggerFactory.getLogger(MetadataUtils.class);
@@ -71,6 +79,9 @@ public class MetadataUtils {
 	public static ImageType guessImageType(PeekHeadInputStream is) throws IOException {
 		// Read the first ImageIO.IMAGE_MAGIC_NUMBER_LEN bytes
 		byte[] magicNumber = is.peek(IMAGE_MAGIC_NUMBER_LEN);
+		if(Arrays.equals(magicNumber, RIFF) && is.getPeekLength() >= IMAGE_HEADER_PEEK_LEN
+				&& Arrays.equals(ArrayUtils.subArray(is.peek(IMAGE_HEADER_PEEK_LEN), 8, 4), WEBP))
+			return ImageType.WEBP;
 		ImageType imageType = guessImageType(magicNumber);
 				
 		return imageType;

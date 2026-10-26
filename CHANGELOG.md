@@ -1,5 +1,64 @@
 # Changelog
 
+## 1.2.0 - 2026-10-26
+
+New features ported from, and verified against, metadata-extractor
+(https://github.com/drewnoakes/metadata-extractor, Apache 2.0; see NOTICE). metadata-extractor is a
+test-scoped dependency only; the published jar still depends on nothing but `slf4j-api`.
+
+### Added
+- **WebP support.** `Metadata.readMetadata`, `insertExif`, `insertXMP`, `insertICCProfile` and
+  `removeMetadata` now handle WebP (`ImageType.WEBP`, new package `pixy.meta.webp`). Simple lossy
+  and lossless files are converted to the extended format when metadata is added (the `VP8X`
+  canvas size and alpha flag are taken from the bitstream header); alpha and animated files keep
+  their flags and frames; chunks are written in the order the container specification requires.
+  Chunk lengths are validated before allocating. EXIF chunks with a JPEG style `Exif\0\0`
+  preamble are read too. WebP has no IPTC, IRB, comment or thumbnail storage; those calls log and
+  copy the image unchanged, as for other formats without them.
+- **Metadata removal for PNG and GIF.** `Metadata.removeMetadata` used to throw
+  `IllegalArgumentException` for both. PNG: EXIF (`eXIf` and "Raw profile type exif"), XMP, ICC
+  (`iCCP`), IPTC/PHOTOSHOP_IRB ("Raw profile type iptc"), COMMENT ("Comment" text chunks),
+  PNG_TEXTUAL (every tEXt/zTXt/iTXt chunk) and PNG_TIME. GIF: COMMENT (comment extensions), XMP
+  and ICC_PROFILE (the "XMP DataXMP" and "ICCRGBG1012" application extensions); the GIF is
+  re-streamed block by block, so frames are copied byte for byte. The removed metadata is
+  returned; corrupt metadata can still be removed. Verified against metadata-extractor, with
+  decoded pixels (all GIF frames) compared before and after.
+- **Maker note decoding.** `Exif.getMakerNote()` (and `MakerNoteField.getMakerNote()`) decode the
+  vendor maker note into named tags for 27 directory layouts (Canon, Nikon type 1/2, Sony,
+  Olympus and its sub directories, Fujifilm, Panasonic, Leica, Pentax, Casio, Apple, Samsung,
+  Sanyo, Sigma, Ricoh, Kyocera, DJI; Epson/Agfa/Minolta via the Olympus layout). Canon and
+  Minolta value arrays are split into individual tags. Decoding is lazy, bounds checked, cycle
+  safe and capped, and an undecodable maker note yields `null`, never an exception. Kodak and
+  Reconyx (fixed binary layouts) are not decoded.
+- Cross-validation tests against metadata-extractor (`CrossValidationTest`, `WebPMetaTest`,
+  `MakerNoteReaderTest`) and an opt-in corpus run (`CorpusCrossValidationTest`,
+  `-Dpixymeta.corpus=<dir>`). Against 73 camera JPEGs (48 brands) and 15 WebP files of
+  metadata-extractor-images, all checks pass apart from three documented maker notes whose
+  values lie outside the maker note itself.
+
+### Changed
+- **Unsupported operations copy the image through instead of writing nothing.** Calling e.g.
+  `insertIPTC` on a PNG, `insertXMP` on a BMP or `insertComments` on a WebP used to log a message
+  and leave the output stream empty, so callers writing to a file ended up with a 0 byte image.
+  The input is now copied to the output unchanged (and the message still logged). Operations that
+  threw `IllegalArgumentException` for a format still do.
+
+### Fixed
+- **Rewritten EXIF had an unreadable maker note.** The MakerNote tag was written with PIXYMETA's
+  internal field type code 15 instead of TIFF UNDEFINED (7), so other software (and PIXYMETA
+  itself) rejected it after any `insertExif(..., update = true)`. It is now written as UNDEFINED.
+- **Maker notes survive EXIF rewrites.** When the maker note moves, offsets that vendors such as
+  Canon, Sony, Panasonic and older Nikon/Olympus models store relative to the TIFF header are
+  shifted accordingly (`MakerNoteReader.relocate`). Self-relative maker notes are copied as is.
+- **PNG: inserting XMP removed every iTXt chunk.** A stray `;` after the keyword check in
+  `PNGMeta` made every iTXt chunk count as XMP; only the XMP packet is replaced now.
+- **PNG: `Metadata.insertICCProfile` rejected PNG** with `IllegalArgumentException` although
+  `PNGMeta.insertICCProfile` exists; it is now dispatched.
+- **JPEG: a file truncated inside the scan data could not be read.** `readMetadata` threw
+  "Premature end of SOS segment" although all metadata precedes the scan; it now stops there.
+- `PeekHeadInputStream.read(byte[], int, int)` returned one byte too few when the source stream
+  ended right after the peeked bytes.
+
 ## 1.1.3 - 2026-10-24
 
 Second round of malformed-input hardening, completing the work started in 1.1.1 by covering the

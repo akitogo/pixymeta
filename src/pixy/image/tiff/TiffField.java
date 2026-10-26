@@ -105,7 +105,10 @@ public abstract class TiffField<T> implements Comparable<TiffField<?>>{
 	public final int write(RandomAccessOutputStream os, int toOffset) throws IOException {
 		// Write the header first
 		os.writeShort(this.tag);
-		os.writeShort(getType().getValue());
+		// EXIF_MAKERNOTE is an internal marker, not a TIFF type: a maker note is stored as
+		// UNDEFINED. Writing the marker value (15) made the tag unreadable to other software.
+		FieldType type = getType();
+		os.writeShort((type == FieldType.EXIF_MAKERNOTE ? FieldType.UNDEFINED : type).getValue());
 		os.writeInt(getLength());
 		// Then the actual data
 		return writeData(os, toOffset);

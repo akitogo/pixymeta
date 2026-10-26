@@ -47,10 +47,12 @@ import pixy.meta.Metadata;
 import pixy.meta.MetadataEntry;
 import pixy.meta.MetadataType;
 import pixy.meta.Thumbnail;
+import pixy.meta.exif.makernote.MakerNote;
 import pixy.meta.tiff.TIFFMeta;
 import pixy.string.StringUtils;
 import pixy.image.tiff.FieldType;
 import pixy.image.tiff.IFD;
+import pixy.image.tiff.MakerNoteField;
 import pixy.image.tiff.Tag;
 import pixy.image.tiff.TiffField;
 import pixy.image.tiff.TiffTag;
@@ -257,6 +259,13 @@ public abstract class Exif extends Metadata {
 		
 		items.add(entry); // Add the Entry (group) into the collection
 		
+		if(tagClass.equals(ExifTag.class)) {
+			// Decoded vendor maker note directories follow the EXIF SubIFD they live in
+			MakerNote makerNote = getMakerNote(currIFD);
+			if(makerNote != null)
+				items.addAll(makerNote.getMetadataEntries());
+		}
+		
 		Map<Tag, IFD> children = currIFD.getChildren();
 		
 		if(children.get(TiffTag.EXIF_SUB_IFD) != null) {
@@ -272,6 +281,24 @@ public abstract class Exif extends Metadata {
 		}		
 	}
 
+	/**
+	 * Decodes the vendor specific MakerNote (0x927c) of the EXIF SubIFD, if present and in a
+	 * supported format (Canon, Nikon, Sony, Olympus, Fujifilm, Panasonic, Pentax, Apple and others).
+	 * 
+	 * @return the decoded maker note, or null if there is none or its format is not supported
+	 */
+	public MakerNote getMakerNote() {
+		ensureDataRead();
+		return (exifSubIFD == null) ? null : getMakerNote(exifSubIFD);
+	}
+	
+	private static MakerNote getMakerNote(IFD ifd) {
+		TiffField<?> field = ifd.getField(ExifTag.MAKER_NOTE);
+		if(field instanceof MakerNoteField)
+			return ((MakerNoteField)field).getMakerNote();
+		return null;
+	}
+	
 	public ExifThumbnail getThumbnail() {
 		if(thumbnail != null)
 			return new ExifThumbnail(thumbnail);

@@ -121,6 +121,8 @@ public class TIFFMeta {
 	 * that bounds both the allocation and the read time.
 	 */
 	private static final int MAX_IFD_ENTRY_COUNT = 1 << 20;
+	/** How far past its declared end a maker note's values are looked for, see readMakerNoteWindow(). */
+	private static final int MAX_MAKER_NOTE_SLACK = 64 * 1024;
 	
 	// Obtain a logger instance
 	private static final Logger LOGGER = LoggerFactory.getLogger(TIFFMeta.class);
@@ -1125,6 +1127,36 @@ public class TIFFMeta {
 		return offset;
 	}
 	
+	// An ASCII field may hold several NUL separated strings; some cameras overstate the Make count
+	private static String firstString(Object ascii) {
+		String s = String.valueOf(ascii);
+		int nul = s.indexOf('\0');
+		return (nul < 0) ? s : s.substring(0, nul);
+	}
+	
+	/**
+	 * Returns the maker note followed by up to MAX_MAKER_NOTE_SLACK bytes that come after it.
+	 * Some cameras (older Canon PowerShots, for example) declare a MakerNote count shorter than
+	 * the data its IFD points into; metadata-extractor and ExifTool read such values from the
+	 * surrounding EXIF data, and so does the maker note decoder when given this window.
+	 */
+	private static byte[] readMakerNoteWindow(RandomAccessInputStream rin, int offset, byte[] makerNote) {
+		byte[] window = new byte[makerNote.length + MAX_MAKER_NOTE_SLACK];
+		System.arraycopy(makerNote, 0, window, 0, makerNote.length);
+		int length = makerNote.length;
+		try {
+			rin.seek((long)offset + makerNote.length);
+			while(length < window.length) {
+				int read = rin.read(window, length, window.length - length);
+				if(read < 0) break;
+				length += read;
+			}
+		} catch(IOException e) {
+			// Best effort only: decode from what was read
+		}
+		return (length == window.length) ? window : Arrays.copyOf(window, length);
+	}
+	
 	// Read IFD without header
 	public static int readIFD(RandomAccessInputStream rin, List<IFD> list, Class<? extends Tag> tagClass) throws IOException {
 		return readIFD(null, null, tagClass, rin, list, 0);
@@ -1181,11 +1213,13 @@ public class TIFFMeta {
 				case SBYTE:
 				case UNDEFINED:
 					byte[] data = new byte[field_length];
+					int dataOffset = -1; // Where the value sits relative to the TIFF header, if not inline
 					rin.seek(offset);
 					if(field_length <= 4) {						
 						rin.readFully(data, 0, field_length);					   
 					} else {
-						rin.seek(rin.readInt());
+						dataOffset = rin.readInt();
+						rin.seek(dataOffset);
 						rin.readFully(data, 0, field_length);
 					}					
 					TiffField<byte[]> byteField = null;
@@ -1194,9 +1228,14 @@ public class TIFFMeta {
 					} else if(ftype == FieldType.SBYTE) {
 						byteField = new SByteField(tag, data);
 					} else {
-						if(ftag == ExifTag.MAKER_NOTE)
-							byteField = new MakerNoteField(tiffIFD, data);
-						else
+						if(ftag == ExifTag.MAKER_NOTE) {
+							// Keep what the maker note decoder needs: many vendors store offsets
+							// relative to the TIFF header, and pick the layout by camera make.
+							TiffField<?> makeField = (parent == null) ? null : parent.getField(TiffTag.MAKE);
+							String make = (makeField == null) ? null : firstString(makeField.getData());
+							byte[] decodeData = (dataOffset < 0) ? data : readMakerNoteWindow(rin, dataOffset, data);
+							byteField = new MakerNoteField(tiffIFD, data, decodeData, dataOffset, rin.getEndian() == IOUtils.BIG_ENDIAN, make);
+						} else
 							byteField = new UndefinedField(tag, data);
 					}
 					tiffIFD.addField(byteField);
