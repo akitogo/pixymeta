@@ -13,6 +13,9 @@
  *
  * Who   Date       Description
  * ====  =======    ==================================================
+ * AK    09Nov2026  Added insertMetadata() applying a MetadataUpdate in one pass;
+ *                  insertIPTC() writes a UTF-8 CodedCharacterSet, merges by tag
+ *                  and no longer modifies the caller's collection
  * WY    21Jun2019  Added code to return the removed metadata as a map
  * WY    13Feb2017  Fixed bug with APP1 segment length too small
  * WY    06Nov2016  Added support for Cardboard Camera image and audio
@@ -91,6 +94,7 @@ import org.w3c.dom.Document;
 
 import pixy.meta.Metadata;
 import pixy.meta.MetadataType;
+import pixy.meta.MetadataUpdate;
 import pixy.meta.Thumbnail;
 import pixy.meta.adobe.IRB;
 import pixy.meta.adobe.IRBThumbnail;
@@ -688,84 +692,7 @@ public class JPGMeta {
 					segments.get(i).write(os);
 				}
 				// Now we insert the EXIF data
-		    	IFD newExifSubIFD = exif.getExifIFD();
-		    	IFD newGpsSubIFD = exif.getGPSIFD();
-		    	IFD newImageIFD = exif.getImageIFD();
-		    	IFD newInteropSubIFD = exif.getInteropIFD();
-		    	ExifThumbnail newThumbnail = exif.getThumbnail();  
-		    	// Define new IFDs
-		    	IFD exifSubIFD = null;
-		    	IFD gpsSubIFD = null;
-		    	IFD interopSubIFD = null;
-		    	IFD imageIFD = null;
-		    	// Got to do something to keep the old data
-		    	if(update && oldExif != null) {
-		    		exif.setPreferredEndian(oldExif.getPreferredEndian());
-		    		IFD oldImageIFD = oldExif.getImageIFD();
-			    	IFD oldExifSubIFD = oldExif.getExifIFD();
-			    	IFD oldGpsSubIFD = oldExif.getGPSIFD();
-			    	IFD oldInteropSubIFD = oldExif.getInteropIFD();
-			    	
-			    	ExifThumbnail thumbnail = oldExif.getThumbnail();
-			    	
-			    	if(oldImageIFD != null) {
-			    		imageIFD = new IFD();
-			    		imageIFD.addFields(oldImageIFD.getFields());
-			    	}
-			    	if(thumbnail != null) {
-			    		if(newThumbnail == null)
-			    			newThumbnail = thumbnail;
-					}
-			    	if(oldExifSubIFD != null) {
-			    		exifSubIFD = new IFD();
-			    		exifSubIFD.addFields(oldExifSubIFD.getFields());
-			    	}
-			    	if(oldInteropSubIFD != null) {
-			    		interopSubIFD = new IFD();
-			    		interopSubIFD.addFields(oldInteropSubIFD.getFields());
-			    	}
-			    	if(oldGpsSubIFD != null) {
-			    		gpsSubIFD = new IFD();
-			    		gpsSubIFD.addFields(oldGpsSubIFD.getFields());
-					}
-		    	}
-		    	if(newImageIFD != null) {
-		    		if(imageIFD == null)
-		    			imageIFD = new IFD();
-		    		imageIFD.addFields(newImageIFD.getFields());
-		    	}
-		    	if(exifSubIFD != null) {
-		    		if(newExifSubIFD != null)
-		    			exifSubIFD.addFields(newExifSubIFD.getFields());
-		    	} else
-		    		exifSubIFD = newExifSubIFD;
-		    	if(interopSubIFD != null) {
-		    		if(newInteropSubIFD != null)
-		    			interopSubIFD.addFields(newInteropSubIFD.getFields());
-		    	} else
-		    		interopSubIFD = newInteropSubIFD;
-		    	if(gpsSubIFD != null) {
-		    		if(newGpsSubIFD != null)
-		    			gpsSubIFD.addFields(newGpsSubIFD.getFields());
-		    	} else
-		    		gpsSubIFD = newGpsSubIFD;
-		    	// If we have ImageIFD, set Image IFD attached with EXIF and GPS
-		     	if(imageIFD != null) {
-		    		if(exifSubIFD != null) {
-			    		imageIFD.addChild(TiffTag.EXIF_SUB_IFD, exifSubIFD);
-			    		if(interopSubIFD != null) {
-				    		exifSubIFD.addChild(ExifTag.EXIF_INTEROPERABILITY_OFFSET, interopSubIFD);
-			    		}
-		    		}
-		    		if(gpsSubIFD != null)
-			    		imageIFD.addChild(TiffTag.GPS_SUB_IFD, gpsSubIFD);
-		    		exif.setImageIFD(imageIFD);
-		    	} else { // Otherwise, set EXIF and GPS IFD separately
-		    		exif.setExifIFD(exifSubIFD);
-		    		exif.setGPSIFD(gpsSubIFD);
-		    		exif.setInteropIFD(interopSubIFD);
-		    	}
-		   		exif.setThumbnail(newThumbnail);
+		    	mergeExif(exif, oldExif, update);
 		   		// Now insert the new EXIF to the JPEG
 		   		exif.write(os);
 		     	// Copy the remaining segments
@@ -822,13 +749,341 @@ public class JPGMeta {
 	}
 	
 	/**
+	 * Merges the IFDs of the EXIF to insert with those of the EXIF already in the image. With
+	 * {@code update} the old fields are kept and the new ones replace old fields of the same tag;
+	 * the old thumbnail is kept unless the new EXIF brings one. Without {@code update}, or without
+	 * an old EXIF, the new EXIF is only normalised (sub IFDs attached to the image IFD).
+	 * The merged result is set on {@code exif}, which is then ready to be written.
+	 */
+	private static void mergeExif(Exif exif, Exif oldExif, boolean update) {
+    	IFD newExifSubIFD = exif.getExifIFD();
+    	IFD newGpsSubIFD = exif.getGPSIFD();
+    	IFD newImageIFD = exif.getImageIFD();
+    	IFD newInteropSubIFD = exif.getInteropIFD();
+    	ExifThumbnail newThumbnail = exif.getThumbnail();
+    	// Define new IFDs
+    	IFD exifSubIFD = null;
+    	IFD gpsSubIFD = null;
+    	IFD interopSubIFD = null;
+    	IFD imageIFD = null;
+    	// Got to do something to keep the old data
+    	if(update && oldExif != null) {
+    		exif.setPreferredEndian(oldExif.getPreferredEndian());
+    		IFD oldImageIFD = oldExif.getImageIFD();
+	    	IFD oldExifSubIFD = oldExif.getExifIFD();
+	    	IFD oldGpsSubIFD = oldExif.getGPSIFD();
+	    	IFD oldInteropSubIFD = oldExif.getInteropIFD();
+
+	    	ExifThumbnail thumbnail = oldExif.getThumbnail();
+
+	    	if(oldImageIFD != null) {
+	    		imageIFD = new IFD();
+	    		imageIFD.addFields(oldImageIFD.getFields());
+	    	}
+	    	if(thumbnail != null) {
+	    		if(newThumbnail == null)
+	    			newThumbnail = thumbnail;
+			}
+	    	if(oldExifSubIFD != null) {
+	    		exifSubIFD = new IFD();
+	    		exifSubIFD.addFields(oldExifSubIFD.getFields());
+	    	}
+	    	if(oldInteropSubIFD != null) {
+	    		interopSubIFD = new IFD();
+	    		interopSubIFD.addFields(oldInteropSubIFD.getFields());
+	    	}
+	    	if(oldGpsSubIFD != null) {
+	    		gpsSubIFD = new IFD();
+	    		gpsSubIFD.addFields(oldGpsSubIFD.getFields());
+			}
+    	}
+    	if(newImageIFD != null) {
+    		if(imageIFD == null)
+    			imageIFD = new IFD();
+    		imageIFD.addFields(newImageIFD.getFields());
+    	}
+    	if(exifSubIFD != null) {
+    		if(newExifSubIFD != null)
+    			exifSubIFD.addFields(newExifSubIFD.getFields());
+    	} else
+    		exifSubIFD = newExifSubIFD;
+    	if(interopSubIFD != null) {
+    		if(newInteropSubIFD != null)
+    			interopSubIFD.addFields(newInteropSubIFD.getFields());
+    	} else
+    		interopSubIFD = newInteropSubIFD;
+    	if(gpsSubIFD != null) {
+    		if(newGpsSubIFD != null)
+    			gpsSubIFD.addFields(newGpsSubIFD.getFields());
+    	} else
+    		gpsSubIFD = newGpsSubIFD;
+    	// If we have ImageIFD, set Image IFD attached with EXIF and GPS
+     	if(imageIFD != null) {
+    		if(exifSubIFD != null) {
+	    		imageIFD.addChild(TiffTag.EXIF_SUB_IFD, exifSubIFD);
+	    		if(interopSubIFD != null) {
+		    		exifSubIFD.addChild(ExifTag.EXIF_INTEROPERABILITY_OFFSET, interopSubIFD);
+	    		}
+    		}
+    		if(gpsSubIFD != null)
+	    		imageIFD.addChild(TiffTag.GPS_SUB_IFD, gpsSubIFD);
+    		exif.setImageIFD(imageIFD);
+    	} else { // Otherwise, set EXIF and GPS IFD separately
+    		exif.setExifIFD(exifSubIFD);
+    		exif.setGPSIFD(gpsSubIFD);
+    		exif.setInteropIFD(interopSubIFD);
+    	}
+   		exif.setThumbnail(newThumbnail);
+	}
+
+	/**
+	 * Merges new IPTC data sets with the existing ones: a new data set replaces all old data sets
+	 * of the same tag unless the tag is repeatable (Keywords, By-line, ...), in which case old and
+	 * new are both kept.
+	 */
+	private static List<IPTCDataSet> mergeIPTC(Collection<? extends IPTCDataSet> newDataSets, byte[] oldIptcData) {
+		List<IPTCDataSet> merged = new ArrayList<IPTCDataSet>();
+		if(oldIptcData != null) {
+			IPTC iptc = new IPTC(oldIptcData);
+			// Shallow copy the map
+			Map<IPTCTag, List<IPTCDataSet>> dataSetMap = new HashMap<IPTCTag, List<IPTCDataSet>>(iptc.getDataSets());
+			for(IPTCDataSet set : newDataSets)
+				if(!set.allowMultiple())
+					dataSetMap.remove(set.getTagEnum());
+			for(List<IPTCDataSet> iptcList : dataSetMap.values())
+				merged.addAll(iptcList); // Old data sets first, so existing keywords keep their place
+		}
+		merged.addAll(newDataSets);
+		return merged;
+	}
+
+	/**
+	 * Applies a whole {@link MetadataUpdate} in one pass over the JPEG: removals first, then the
+	 * EXIF, XMP, ICC profile, Photoshop IRB (with IPTC) and comments to insert, each in the place
+	 * the respective single operation ({@link #insertExif}, {@link #insertXMP}, ...) would put it.
+	 * Segments that the update does not touch are copied byte for byte, as is the image data.
+	 *
+	 * @param is InputStream for the original image
+	 * @param os OutputStream for the updated image
+	 * @param update what to insert and remove
+	 * @throws IOException
+	 */
+	public static void insertMetadata(InputStream is, OutputStream os, MetadataUpdate update) throws IOException {
+		if(update == null) throw new IllegalArgumentException("MetadataUpdate is null");
+		Exif exif = update.getExif();
+		// We need thumbnail image but don't have one, create one from the current image input stream
+		if(exif != null && exif.isThumbnailRequired() && !exif.containsThumbnail()) {
+			is = new FileCacheRandomAccessInputStream(is);
+			exif.setThumbnailImage(MetadataUtils.createThumbnail(is));
+		}
+		boolean touchExif = exif != null || update.removes(MetadataType.EXIF);
+		boolean touchXmp = update.hasXmp() || update.removes(MetadataType.XMP);
+		boolean touchIcc = update.getIccProfile() != null || update.removes(MetadataType.ICC_PROFILE);
+		boolean removeIrb = update.removes(MetadataType.PHOTOSHOP_IRB);
+		boolean touchIrb = removeIrb || update.getIptc() != null || update.removes(MetadataType.IPTC)
+				|| update.removes(MetadataType.XMP) || update.removes(MetadataType.EXIF);
+
+		Exif oldExif = null;
+		ByteArrayOutputStream eightBIMStream = null; // Used to read multiple segment Adobe APP13
+		int app0Index = -1;
+		int keptExifIndex = -1;
+		boolean finished = false;
+		int length = 0;
+		short marker;
+		Marker emarker;
+
+		// The very first marker should be the start_of_image marker!
+		if(Marker.fromShort(IOUtils.readShortMM(is)) != Marker.SOI)
+			throw new IOException("Invalid JPEG image, expected SOI marker not found!");
+
+		IOUtils.writeShortMM(os, Marker.SOI.getValue());
+
+		marker = IOUtils.readShortMM(is);
+
+		// Create a list to hold the temporary Segments
+		List<Segment> segments = new ArrayList<Segment>();
+
+		while (!finished) { // Read through and add the segments to a list until SOS
+			if (Marker.fromShort(marker) == Marker.SOS) {
+				// Everything the update inserts goes after the APP0 segments (and after an EXIF we keep)
+				int insertAfter = Math.max(app0Index, keptExifIndex);
+				for(int i = 0; i <= insertAfter; i++)
+					segments.get(i).write(os);
+				// EXIF
+				if(exif != null) {
+					mergeExif(exif, oldExif, update.keepExistingExif());
+					exif.write(os);
+				}
+				// XMP
+				if(update.getXmp() != null)
+					update.getXmp().write(os);
+				else if(update.getXmpString() != null)
+					new JpegXMP(update.getXmpString(), null).write(os);
+				// ICC profile
+				if(update.getIccProfile() != null)
+					writeICCProfile(os, update.getIccProfile());
+				// Photoshop IRB with IPTC
+				Map<Short, _8BIM> bimMap = new HashMap<Short, _8BIM>();
+				if(eightBIMStream != null && !removeIrb)
+					bimMap.putAll(new IRB(eightBIMStream.toByteArray()).get8BIM());
+				if(update.removes(MetadataType.XMP))
+					bimMap.remove(ImageResourceID.XMP_METADATA.getValue());
+				if(update.removes(MetadataType.EXIF)) {
+					bimMap.remove(ImageResourceID.EXIF_DATA1.getValue());
+					bimMap.remove(ImageResourceID.EXIF_DATA3.getValue());
+				}
+				_8BIM oldIptcBIM = bimMap.remove(ImageResourceID.IPTC_NAA.getValue());
+				if(update.getIptc() != null) {
+					List<IPTCDataSet> dataSets = (update.keepExistingIptc() && oldIptcBIM != null)
+							? mergeIPTC(update.getIptc(), oldIptcBIM.getData()) : new ArrayList<IPTCDataSet>(update.getIptc());
+					ByteArrayOutputStream bout = new ByteArrayOutputStream();
+					for(IPTCDataSet dataSet : IPTC.prepareForWrite(dataSets))
+						dataSet.write(bout);
+					bimMap.put(ImageResourceID.IPTC_NAA.getValue(), new _8BIM(ImageResourceID.IPTC_NAA.getValue(), "iptc", bout.toByteArray()));
+				} else if(oldIptcBIM != null && !update.removes(MetadataType.IPTC))
+					bimMap.put(oldIptcBIM.getID(), oldIptcBIM);
+				if(!bimMap.isEmpty())
+					writeIRB(os, bimMap.values());
+				// Comments
+				if(update.getComments() != null)
+					for(String comment : update.getComments())
+						writeComment(comment, os);
+		     	// Copy the remaining segments
+				for(int i = insertAfter + 1; i < segments.size(); i++)
+					segments.get(i).write(os);
+				// Copy the leftover stuff
+				IOUtils.writeShortMM(os, marker);
+				copyToEnd(is, os);
+				// We are done
+				finished = true;
+			} else { // Read markers
+				emarker = Marker.fromShort(marker);
+
+				switch (emarker) {
+					case JPG: // JPG and JPGn shouldn't appear in the image.
+					case JPG0:
+					case JPG13:
+				    case TEM: // The only stand alone marker besides SOI, EOI, and RSTn.
+				    	segments.add(new Segment(emarker, 0, null));
+						marker = IOUtils.readShortMM(is);
+						break;
+					case PADDING: // Fill bytes before a marker, dropped
+						int nextByte = 0;
+						while ((nextByte = IOUtils.read(is)) == 0xff) {
+							;
+						}
+						if(nextByte == -1)
+							throw new IOException("Premature end of JPEG stream after fill bytes");
+						marker = (short) ((0xff << 8) | nextByte);
+						break;
+				    case APP0:
+				    	length = IOUtils.readUnsignedShortMM(is);
+				    	byte[] app0 = new byte[length - 2];
+				    	IOUtils.readFully(is, app0);
+				    	if(update.removes(MetadataType.JPG_JFIF) && startsWith(app0, JFIF_ID)) {
+				    		; // dropped
+				    	} else {
+				    		app0Index = segments.size();
+				    		segments.add(new Segment(emarker, length, app0));
+				    	}
+				    	marker = IOUtils.readShortMM(is);
+				    	break;
+				    case APP1:
+				    	length = IOUtils.readUnsignedShortMM(is);
+				    	byte[] app1 = new byte[length - 2];
+						IOUtils.readFully(is, app1);
+						if(startsWith(app1, EXIF_ID)) { // We assume EXIF data exist only in one APP1
+							if(touchExif) {
+								if(exif != null && update.keepExistingExif())
+									oldExif = new JpegExif(ArrayUtils.subArray(app1, EXIF_ID.length(), length - EXIF_ID.length() - 2));
+							} else {
+								keptExifIndex = segments.size();
+								segments.add(new Segment(emarker, length, app1));
+							}
+						} else if(startsWith(app1, XMP_ID) || startsWith(app1, XMP_EXT_ID) || startsWith(app1, NON_STANDARD_XMP_ID)) {
+							if(!touchXmp)
+								segments.add(new Segment(emarker, length, app1));
+						} else
+							segments.add(new Segment(emarker, length, app1));
+						marker = IOUtils.readShortMM(is);
+						break;
+				    case APP2:
+				    	length = IOUtils.readUnsignedShortMM(is);
+				    	byte[] app2 = new byte[length - 2];
+						IOUtils.readFully(is, app2);
+						if(!(touchIcc && startsWith(app2, ICC_PROFILE_ID)))
+							segments.add(new Segment(emarker, length, app2));
+						marker = IOUtils.readShortMM(is);
+						break;
+				    case APP12:
+				    	length = IOUtils.readUnsignedShortMM(is);
+				    	byte[] app12 = new byte[length - 2];
+						IOUtils.readFully(is, app12);
+						if(!(update.removes(MetadataType.JPG_DUCKY) && startsWith(app12, DUCKY_ID)))
+							segments.add(new Segment(emarker, length, app12));
+						marker = IOUtils.readShortMM(is);
+						break;
+				    case APP13:
+				    	length = IOUtils.readUnsignedShortMM(is);
+				    	byte[] app13 = new byte[length - 2];
+						IOUtils.readFully(is, app13);
+						if(touchIrb && startsWith(app13, PHOTOSHOP_IRB_ID)) {
+							if(eightBIMStream == null)
+								eightBIMStream = new ByteArrayOutputStream();
+							eightBIMStream.write(app13, PHOTOSHOP_IRB_ID.length(), app13.length - PHOTOSHOP_IRB_ID.length());
+						} else
+							segments.add(new Segment(emarker, length, app13));
+						marker = IOUtils.readShortMM(is);
+						break;
+				    case APP14:
+				    	length = IOUtils.readUnsignedShortMM(is);
+				    	byte[] app14 = new byte[length - 2];
+						IOUtils.readFully(is, app14);
+						if(!(update.removes(MetadataType.JPG_ADOBE) && startsWith(app14, ADOBE_ID)))
+							segments.add(new Segment(emarker, length, app14));
+						marker = IOUtils.readShortMM(is);
+						break;
+				    case COM:
+				    	length = IOUtils.readUnsignedShortMM(is);
+				    	byte[] com = new byte[length - 2];
+						IOUtils.readFully(is, com);
+						if(!update.removes(MetadataType.COMMENT))
+							segments.add(new Segment(emarker, length, com));
+						marker = IOUtils.readShortMM(is);
+						break;
+				    default:
+					    length = IOUtils.readUnsignedShortMM(is);
+					    byte[] buf = new byte[length - 2];
+					    IOUtils.readFully(is, buf);
+					    if(emarker == Marker.UNKNOWN)
+					    	segments.add(new UnknownSegment(marker, length, buf));
+					    else
+					    	segments.add(new Segment(emarker, length, buf));
+					    marker = IOUtils.readShortMM(is);
+				}
+			}
+	    }
+		// Close the input stream in case it's an instance of RandomAccessInputStream
+		if(is instanceof RandomAccessInputStream)
+			((FileCacheRandomAccessInputStream)is).shallowClose();
+	}
+
+	/** True if the segment body starts with the given identifier (compared as ISO-8859-1 bytes). */
+	private static boolean startsWith(byte[] data, String id) {
+		if(data.length < id.length()) return false;
+		for(int i = 0; i < id.length(); i++)
+			if(data[i] != (byte)id.charAt(i)) return false;
+		return true;
+	}
+
+	/**
 	 * Insert ICC_Profile as one or more APP2 segments
-	 * 
+	 *
 	 * @param is input stream for the original image
 	 * @param os output stream to write the ICC_Profile
 	 * @param data ICC_Profile data array to be inserted
 	 * @throws IOException
-	 */	
+	 */
 	public static void insertICCProfile(InputStream is, OutputStream os, byte[] data) throws IOException {
 		// Copy the original image and insert ICC_Profile data
 		byte[] icc_profile_id = {0x49, 0x43, 0x43, 0x5f, 0x50, 0x52, 0x4f, 0x46, 0x49, 0x4c, 0x45, 0x00};
@@ -964,29 +1219,22 @@ public class JPGMeta {
 		
 		while (!finished) {	        
 			if (Marker.fromShort(marker) == Marker.SOS) {
+				List<IPTCDataSet> dataSets = new ArrayList<IPTCDataSet>(iptcs); // Never modify the caller's collection
 				if(eightBIMStream != null) {
 					IRB irb = new IRB(eightBIMStream.toByteArray());
 		    		// Shallow copy the map.
 		    		bimMap = new HashMap<Short, _8BIM>(irb.get8BIM());
 					_8BIM iptcBIM = bimMap.remove(ImageResourceID.IPTC_NAA.getValue());
-					if(iptcBIM != null && update) { // Keep the original values
-						IPTC iptc = new IPTC(iptcBIM.getData());
-						// Shallow copy the map
-						Map<IPTCTag, List<IPTCDataSet>> dataSetMap = new HashMap<IPTCTag, List<IPTCDataSet>>(iptc.getDataSets());
-						for(IPTCDataSet set : iptcs)
-							if(!set.allowMultiple())
-								dataSetMap.remove(set.getName());
-						for(List<IPTCDataSet> iptcList : dataSetMap.values())
-							iptcs.addAll(iptcList);
-					}
-			  	}				
+					if(iptcBIM != null && update) // Keep the original values
+						dataSets = mergeIPTC(iptcs, iptcBIM.getData());
+			  	}
 				int index = Math.max(app0Index, app1Index);
 				// Write the items in segments list excluding the APP13
 				for(int i = 0; i <= index; i++)
-					segments.get(i).write(os);	
+					segments.get(i).write(os);
 				ByteArrayOutputStream bout = new ByteArrayOutputStream();
 				// Insert IPTC data as one of IRB 8BIM block
-				for(IPTCDataSet iptc : iptcs)
+				for(IPTCDataSet iptc : IPTC.prepareForWrite(dataSets))
 					iptc.write(bout);
 				// Create 8BIM for IPTC
 				_8BIM newBIM = new _8BIM(ImageResourceID.IPTC_NAA.getValue(), "iptc", bout.toByteArray());

@@ -13,6 +13,8 @@
  *
  * Who   Date       Description
  * ====  =========  =====================================================================
+ * AK    09Nov2026  insertIPTC() writes a UTF-8 CodedCharacterSet, merges by tag
+ *                  and no longer modifies the caller's collection
  * WY    21Jun2019  Added code for removeMetadata to return the removed metadata as a map
  * WY    14May2019  Write IPTC to normal TIFF IPTC tag instead of PhotoShop IRB block
  * WY    06Jul2015  Added insertXMP(InputSream, OutputStream, XMP)
@@ -168,7 +170,7 @@ public class TIFFMeta {
 		Map<IPTCTag, List<IPTCDataSet>> dataSetMap = new HashMap<IPTCTag, List<IPTCDataSet>>(iptc.getDataSets());
 		for(IPTCDataSet set : iptcs)
 			if(!set.allowMultiple())
-				dataSetMap.remove(set.getName());
+				dataSetMap.remove(set.getTagEnum());
 		for(List<IPTCDataSet> iptcList : dataSetMap.values())
 			iptcs.addAll(iptcList);
 		
@@ -836,6 +838,8 @@ public class TIFFMeta {
 			throw new IllegalArgumentException("pageNumber " + pageNumber + " out of bounds: 0 - " + (ifds.size() - 1));
 		
 		IFD workingPage = ifds.get(pageNumber);
+		
+		iptcs = new ArrayList<IPTCDataSet>(iptcs); // Never modify the caller's collection
 	
 		ByteArrayOutputStream bout = new ByteArrayOutputStream();
 		
@@ -878,9 +882,8 @@ public class TIFFMeta {
 			}
 		}
 		
-		// Sort the IPTCDataSet collection
-		List<IPTCDataSet> iptcList = new ArrayList<IPTCDataSet>(iptcs);
-		Collections.sort(iptcList);
+		// Sort the IPTCDataSet collection and declare the UTF-8 character set
+		List<IPTCDataSet> iptcList = IPTC.prepareForWrite(iptcs);
 		// Write IPTCDataSet collection
 		bout.reset();
 		for(IPTCDataSet dataset : iptcList) {

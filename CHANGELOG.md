@@ -1,5 +1,59 @@
 # Changelog
 
+## 1.3.0 - unreleased
+
+Groundwork for metadata editing from scripting runtimes (BoxLang, Lucee): callers no longer need
+to know TIFF field types or Java array layouts, several changes can be written in one pass, and
+IPTC text is declared as UTF-8. No new runtime dependency; the published jar still depends on
+nothing but `slf4j-api`.
+
+### Added
+- **Field type table.** `ExifTag`, `GPSTag` and the previously untyped `TiffTag` entries now return
+  the field type the EXIF 2.32 / TIFF 6.0 specifications define from `Tag.getFieldType()` (it
+  used to be `UNKNOWN` for every EXIF and GPS tag). Where the specification allows SHORT or LONG,
+  LONG is returned. The EXIF 2.31/2.32 tags `ISOSpeed`, `ISOSpeedLatitudeyyy/zzz`,
+  `Temperature`, `Humidity`, `Pressure`, `WaterDepth`, `Acceleration`, `CameraElevationAngle`,
+  `CompositeImage`, `SourceImageNumberOfCompositeImage`,
+  `SourceExposureTimesOfCompositeImage` and `Gamma` were added to `ExifTag`.
+- **`Exif.addField(Tag, Object)`.** Adds a field to the IFD the tag's class belongs to (IFD0,
+  EXIF, GPS or Interoperability SubIFD) with the tag's field type, converting the value with the
+  new `FieldType.coerce(Object)`: numbers, primitive arrays, lists, decimal or fraction strings
+  (`"1/250"`, `"52 30 12.5"`), `Date`/`Calendar`/`java.time` values for date tags. Doubles become
+  rationals by continued-fraction approximation (`2.8` to `14/5`). `UserComment`,
+  `GPSProcessingMethod` and `GPSAreaInformation` strings get the 8 byte character code the
+  specification requires (`ASCII`, or `UNICODE` in the EXIF byte order). `Exif.getField(Tag)` and
+  `Exif.removeField(Tag)` complete the set. The existing `addImageField/addExifField/
+  addGPSField/addInteropField(tag, FieldType, value)` accept the same inputs (previously only the
+  exact array type), and `FieldType.createField` can now create FLOAT and DOUBLE fields.
+- **`Metadata.insertMetadata(InputStream, OutputStream, MetadataUpdate)`.** A `MetadataUpdate`
+  bundles EXIF, IPTC, XMP, an ICC profile and comments to insert plus metadata types to remove.
+  For JPEG the update is applied in one pass over the file (previously each metadata type meant a
+  full read/write cycle); segments the update does not touch and the image data are copied byte
+  for byte. For TIFF, PNG, GIF and WebP the single operations are chained in memory; formats
+  without metadata support copy the image unchanged.
+
+### Changed
+- **IPTC output declares UTF-8.** Every IPTC block written by `insertIPTC` (JPEG APP13 and TIFF),
+  `insertMetadata` and `IPTC.write` starts with a `CodedCharacterSet` (1:90) data set for UTF-8,
+  the encoding `IPTCDataSet` has always used for strings, and data sets are written sorted by
+  record and tag as IIM requires. Without the declaration readers fell back to Latin-1 or the
+  platform charset and showed non-ASCII text garbled. When merging into existing IPTC
+  (`update = true`), application record strings that are not valid UTF-8 are assumed to be
+  Latin-1 and re-encoded so the block stays consistent; an existing 1:90 with another value is
+  replaced. `IPTC.prepareForWrite(Collection)` exposes this normalisation.
+- **Java 11 bytecode.** The jar is compiled with `--release 11` instead of 21 (the sources never
+  used newer language features or APIs), so it can be used from the Lucee image extension and
+  other projects that still target Java 11. Builds and tests continue to run on Java 21.
+
+### Fixed
+- **IPTC merge did not replace existing values.** `insertIPTC(..., update = true)` (JPEG and TIFF)
+  removed old data sets by *name* from a map keyed by *tag*, so nothing was ever removed and the
+  output contained both the old and the new `ObjectName`, `Caption`, etc. Single-value tags are
+  now replaced; repeatable tags (Keywords, By-line, ...) are appended after the existing values.
+- **`insertIPTC` modified the caller's collection.** The old data sets were added to the passed
+  collection, which failed with `UnsupportedOperationException` for `List.of(...)` and surprised
+  callers that reused the list. The collection is copied first.
+
 ## 1.2.0 - 2026-10-26
 
 New features ported from, and verified against, metadata-extractor

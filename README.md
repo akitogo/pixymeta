@@ -10,7 +10,7 @@ This is the meta data related part branched out from icafe repository.
 
 Requirements
 ----------------------------------------
-- Java 21 or later
+- Java 11 or later (the release builds and tests run on Java 21)
 - SLF4J API 2.0.17
 
 PIXYMETA logs through the SLF4J API only and ships no logging backend. Add the SLF4J binding of
@@ -63,6 +63,54 @@ Image metadata manipulation:
      iterating the EXIF metadata
    * Rewriting EXIF keeps the maker note readable: offsets that vendors store relative to the
      TIFF header are adjusted when the maker note moves
+
+Writing metadata with plain values
+----------------------------------------
+Every `ExifTag`, `GPSTag`, `InteropTag` and `TiffTag` knows the TIFF field type the EXIF 2.32 /
+TIFF 6.0 specifications define for it (`Tag.getFieldType()`), so a field can be added from an
+ordinary Java value without choosing the `FieldType` or building the right primitive array:
+
+```java
+Exif exif = new JpegExif();                      // or new TiffExif() for TIFF
+exif.addField(TiffTag.ARTIST, "Jane Tester");
+exif.addField(TiffTag.ORIENTATION, 6);
+exif.addField(ExifTag.DATE_TIME_ORIGINAL, LocalDateTime.now());   // Date, Calendar or java.time
+exif.addField(ExifTag.ISO_SPEED_RATINGS, 400);
+exif.addField(ExifTag.FNUMBER, 2.8);                              // becomes the rational 14/5
+exif.addField(ExifTag.EXPOSURE_TIME, "1/250");
+exif.addField(ExifTag.EXPOSURE_BIAS_VALUE, -1.0 / 3);
+exif.addField(ExifTag.USER_COMMENT, "Grüße");                     // ASCII/UNICODE character code added
+exif.addField(GPSTag.GPS_LATITUDE_REF, "N");
+exif.addField(GPSTag.GPS_LATITUDE, new double[] {52, 30, 12.5});  // degrees, minutes, seconds
+exif.addField(GPSTag.GPS_ALTITUDE, 34.5);
+Metadata.insertExif(in, out, exif, true);        // true: merge into the existing EXIF
+```
+
+`FieldType.coerce(Object)` documents the accepted inputs per type (numbers, primitive arrays,
+lists, decimal or fraction strings, dates). The explicit `addImageField/addExifField/addGPSField/
+addInteropField(tag, FieldType, value)` methods accept the same inputs. `Exif.getField(tag)` and
+`Exif.removeField(tag)` look a field up or remove it in the IFD the tag belongs to.
+
+Several changes can be applied in one call with `Metadata.insertMetadata`. For JPEG the whole
+update is written in a single pass over the file (one read of the input, one write of the
+output, image data copied untouched); for TIFF, PNG, GIF and WebP the single operations are
+chained in memory:
+
+```java
+MetadataUpdate update = new MetadataUpdate()
+    .exif(exif, true)                                            // merge into existing EXIF
+    .iptc(List.of(new IPTCDataSet(IPTCApplicationTag.KEY_WORDS, "beach")), true)
+    .xmp(xmpPacket)                                              // replaces an existing packet
+    .iccProfile(ICC_Profile.getInstance(ColorSpace.CS_sRGB).getData())
+    .remove(MetadataType.COMMENT);                               // removals run first
+Metadata.insertMetadata(in, out, update);
+```
+
+IPTC strings are stored as UTF-8 and, since 1.3.0, every IPTC block PIXYMETA writes starts with
+the IIM `CodedCharacterSet` (1:90) declaration for UTF-8, so Photoshop, exiftool,
+metadata-extractor and other readers decode umlauts, accents and CJK text correctly. When new data
+sets are merged into existing IPTC that was written without the declaration, application record
+strings that are not valid UTF-8 are assumed to be Latin-1 and re-encoded.
 
 
 How to compile
@@ -118,7 +166,7 @@ element count can be slow to read).
 Where can I get the latest release?
 -----------------------------------
 This repository is a maintained fork of [dragon66/pixymeta](https://github.com/dragon66/pixymeta)
-(Java 21, SLF4J 2, bug fixes; see [CHANGELOG.md](CHANGELOG.md)). The upstream project was never
+(Java 11+, SLF4J 2, bug fixes; see [CHANGELOG.md](CHANGELOG.md)). The upstream project was never
 released to Maven Central and its Sonatype snapshots are no longer available.
 
 Releases of this fork are published to Maven Central:
@@ -127,7 +175,7 @@ Releases of this fork are published to Maven Central:
 <dependency>
   <groupId>com.akitogo</groupId>
   <artifactId>pixymeta</artifactId>
-  <version>1.2.0</version>
+  <version>1.3.0</version>
 </dependency>
 ```
 

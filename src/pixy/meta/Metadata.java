@@ -13,6 +13,7 @@
  *
  * Who   Date       Description
  * ====  =========  =====================================================
+ * AK    09Nov2026  Added insertMetadata(InputStream, OutputStream, MetadataUpdate)
  * AK    26Oct2026  Added WebP support
  * WY    26Sep2015  Added insertComment(InputStream, OutputStream, String}
  * WY    06Jul2015  Added insertXMP(InputSream, OutputStream, XMP)
@@ -424,6 +425,80 @@ public abstract class Metadata implements MetadataReader, Iterable<MetadataEntry
 		peekHeadInputStream.shallowClose();
 	}
 	
+	/**
+	 * Applies several metadata changes to an image in one call: removals first, then the EXIF,
+	 * IPTC, XMP, ICC profile and comments the {@link MetadataUpdate} carries. For JPEG the update
+	 * is applied in a single pass over the file; for TIFF, PNG, GIF and WebP the individual
+	 * operations are chained in memory, so the result is the same as calling them one after the
+	 * other. Metadata types a format cannot hold are skipped with a log message, exactly as the
+	 * single operations do, and for formats without metadata support the image is copied unchanged.
+	 *
+	 * @param is InputStream for the original image
+	 * @param os OutputStream for the updated image
+	 * @param update what to insert and remove; an empty update copies the image unchanged
+	 * @throws IOException
+	 */
+	public static void insertMetadata(InputStream is, OutputStream os, MetadataUpdate update) throws IOException {
+		if(update == null) throw new IllegalArgumentException("MetadataUpdate is null");
+		// ImageIO.IMAGE_MAGIC_NUMBER_LEN bytes as image magic number
+		PeekHeadInputStream peekHeadInputStream = new PeekHeadInputStream(is, IMAGE_MAGIC_NUMBER_LEN, MetadataUtils.IMAGE_HEADER_PEEK_LEN);
+		ImageType imageType = MetadataUtils.guessImageType(peekHeadInputStream);
+		switch(imageType) {
+			case JPG:
+				if(update.isEmpty())
+					copyUnchanged(peekHeadInputStream, os);
+				else
+					JPGMeta.insertMetadata(peekHeadInputStream, os, update);
+				break;
+			case TIFF:
+			case PNG:
+			case GIF:
+			case WEBP:
+				insertMetadataChained(peekHeadInputStream, os, update);
+				break;
+			case PCX:
+			case TGA:
+			case BMP:
+				LOGGER.info("{} image format does not support meta data, copying the image unchanged", imageType);
+				copyUnchanged(peekHeadInputStream, os);
+				break;
+			default:
+				peekHeadInputStream.close();
+				throw new IllegalArgumentException("Metadata inserting is not supported for " + imageType + " image");
+		}
+		peekHeadInputStream.shallowClose();
+	}
+
+	/** Applies the update as a chain of the single operations, each working on the previous result in memory. */
+	private static void insertMetadataChained(InputStream is, OutputStream os, MetadataUpdate update) throws IOException {
+		byte[] image = pixy.io.IOUtils.inputStreamToByteArray(is);
+		if(!update.getRemovals().isEmpty())
+			image = apply(image, (in, out) -> removeMetadata(in, out, update.getRemovals().toArray(new MetadataType[0])));
+		if(update.getExif() != null)
+			image = apply(image, (in, out) -> insertExif(in, out, update.getExif(), update.keepExistingExif()));
+		if(update.getIptc() != null)
+			image = apply(image, (in, out) -> insertIPTC(in, out, update.getIptc(), update.keepExistingIptc()));
+		if(update.getXmp() != null)
+			image = apply(image, (in, out) -> insertXMP(in, out, update.getXmp()));
+		else if(update.getXmpString() != null)
+			image = apply(image, (in, out) -> insertXMP(in, out, update.getXmpString()));
+		if(update.getIccProfile() != null)
+			image = apply(image, (in, out) -> insertICCProfile(in, out, update.getIccProfile()));
+		if(update.getComments() != null && !update.getComments().isEmpty())
+			image = apply(image, (in, out) -> insertComments(in, out, update.getComments()));
+		os.write(image);
+	}
+
+	private interface Step {
+		void apply(InputStream in, OutputStream out) throws IOException;
+	}
+
+	private static byte[] apply(byte[] image, Step step) throws IOException {
+		java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream(image.length + 4096);
+		step.apply(new java.io.ByteArrayInputStream(image), out);
+		return out.toByteArray();
+	}
+
 	public static Map<MetadataType, Metadata> readMetadata(File image) throws IOException {
 		FileInputStream fin = new FileInputStream(image);
 		Map<MetadataType, Metadata> metadataMap = readMetadata(fin);

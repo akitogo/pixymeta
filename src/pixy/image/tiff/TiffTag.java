@@ -105,7 +105,7 @@ public enum TiffTag implements Tag {
 		}
 	},
 	
-	THRESHOLDING("Thresholding", (short)0x0107, Attribute.BASELINE) {
+	THRESHOLDING("Thresholding", (short)0x0107, Attribute.BASELINE, FieldType.SHORT) {
 		public String getFieldAsString(Object value) {
 			//
 			int intValue = ((int[])value)[0];
@@ -185,7 +185,7 @@ public enum TiffTag implements Tag {
 		}
 	},
 	
-	ORIENTATION("Orientation", (short)0x0112, Attribute.BASELINE) {
+	ORIENTATION("Orientation", (short)0x0112, Attribute.BASELINE, FieldType.SHORT) {
 		public String getFieldAsString(Object value) {
 			String[] values = {"TopLeft", "TopRight", "BottomRight", "BottomLeft", "LeftTop",
 								"RightTop",	"RightBottom", "LeftBottom"};
@@ -266,9 +266,9 @@ public enum TiffTag implements Tag {
 		}
 	},
 	
-	PAGE_NAME("	PageName", (short)0x011D, Attribute.EXTENDED),
-	X_POSITION("XPosition", (short)0x011E, Attribute.EXTENDED),
-	Y_POSITION("YPosition", (short)0x011F, Attribute.EXTENDED),
+	PAGE_NAME("	PageName", (short)0x011D, Attribute.EXTENDED, FieldType.ASCII),
+	X_POSITION("XPosition", (short)0x011E, Attribute.EXTENDED, FieldType.RATIONAL),
+	Y_POSITION("YPosition", (short)0x011F, Attribute.EXTENDED, FieldType.RATIONAL),
 	
 	FREE_OFFSETS("FreeOffsets", (short)0x0120, Attribute.BASELINE) {
 		public FieldType getFieldType() {
@@ -378,7 +378,7 @@ public enum TiffTag implements Tag {
 		}
 	},
 	
-	TRANSFER_FUNCTION("TransferFunction", (short)0x012D, Attribute.EXTENDED),
+	TRANSFER_FUNCTION("TransferFunction", (short)0x012D, Attribute.EXTENDED, FieldType.SHORT),
 	
 	SOFTWARE("Software", (short)0x0131, Attribute.BASELINE) {
 		public FieldType getFieldType() {
@@ -401,7 +401,7 @@ public enum TiffTag implements Tag {
 		}
 	},
 	
-	HOST_COMPUTER("HostComputer", (short)0x013C, Attribute.BASELINE),
+	HOST_COMPUTER("HostComputer", (short)0x013C, Attribute.BASELINE, FieldType.ASCII),
 	
 	PREDICTOR("Predictor", (short)0x013D, Attribute.EXTENDED) {
 		public String getFieldAsString(Object value) {
@@ -423,8 +423,8 @@ public enum TiffTag implements Tag {
 		}
 	},
 	
-	WHITE_POINT("WhitePoint", (short)0x013E, Attribute.EXTENDED),
-	PRIMARY_CHROMATICITIES("PrimaryChromaticities", (short)0x013F, Attribute.EXTENDED),
+	WHITE_POINT("WhitePoint", (short)0x013E, Attribute.EXTENDED, FieldType.RATIONAL),
+	PRIMARY_CHROMATICITIES("PrimaryChromaticities", (short)0x013F, Attribute.EXTENDED, FieldType.RATIONAL),
 	
 	COLORMAP("ColorMap", (short)0x0140, Attribute.BASELINE) {
 		public FieldType getFieldType() {
@@ -432,7 +432,7 @@ public enum TiffTag implements Tag {
 		}
 	},
 	
-	HALTONE_HINTS("HalftoneHints", (short)0x0141, Attribute.EXTENDED),
+	HALTONE_HINTS("HalftoneHints", (short)0x0141, Attribute.EXTENDED, FieldType.SHORT),
 	
 	TILE_WIDTH("TileWidth", (short)0x0142, Attribute.EXTENDED) {
 		public FieldType getFieldType() {
@@ -458,9 +458,9 @@ public enum TiffTag implements Tag {
 		}
 	},
 	
-	BAD_FAX_LINES("BadFaxLines", (short)0x0146, Attribute.EXTENDED),
-	CLEAN_FAX_DATA("CleanFaxData", (short)0x0147, Attribute.EXTENDED),
-	CONSECUTIVE_BAD_FAX_LINES("ConsecutiveBadFaxLines", (short)0x0148, Attribute.EXTENDED),
+	BAD_FAX_LINES("BadFaxLines", (short)0x0146, Attribute.EXTENDED, FieldType.LONG),
+	CLEAN_FAX_DATA("CleanFaxData", (short)0x0147, Attribute.EXTENDED, FieldType.SHORT),
+	CONSECUTIVE_BAD_FAX_LINES("ConsecutiveBadFaxLines", (short)0x0148, Attribute.EXTENDED, FieldType.LONG),
 	
 	SUB_IFDS("SubIFDs", (short)0x014A, Attribute.EXTENDED) {
 		public FieldType getFieldType() {
@@ -487,10 +487,10 @@ public enum TiffTag implements Tag {
 		}
 	},
 	
-	INK_NAMES("InkNames", (short)0x014D, Attribute.EXTENDED),
-	NUMBER_OF_INKS("NumberOfInks", (short)0x014E, Attribute.EXTENDED),
-	DOT_RANGE("DotRange", (short)0x0150, Attribute.EXTENDED),
-	TARGET_PRINTER("TargetPrinter", (short)0x0151, Attribute.EXTENDED),
+	INK_NAMES("InkNames", (short)0x014D, Attribute.EXTENDED, FieldType.ASCII),
+	NUMBER_OF_INKS("NumberOfInks", (short)0x014E, Attribute.EXTENDED, FieldType.SHORT),
+	DOT_RANGE("DotRange", (short)0x0150, Attribute.EXTENDED, FieldType.SHORT),
+	TARGET_PRINTER("TargetPrinter", (short)0x0151, Attribute.EXTENDED, FieldType.ASCII),
 	
 	EXTRA_SAMPLES("ExtraSamples", (short)0x0152, Attribute.BASELINE) {
 		public String getFieldAsString(Object value) {
@@ -509,7 +509,7 @@ public enum TiffTag implements Tag {
 		}
 	},
 	
-	SAMPLE_FORMAT("SampleFormat", (short)0x0153, Attribute.EXTENDED) {
+	SAMPLE_FORMAT("SampleFormat", (short)0x0153, Attribute.EXTENDED, FieldType.SHORT) {
 		public String getFieldAsString(Object value) {
 			String[] values = {"Unsigned integer data", "Two's complement signed integer data",
 					"IEEE floating point data",	"Undefined data format", "Complex integer data",
@@ -524,12 +524,12 @@ public enum TiffTag implements Tag {
 	
 	S_MIN_SAMPLE_VALUE("SMinSampleValue", (short)0x0154, Attribute.EXTENDED),
 	S_MAX_SAMPLE_VALUE("SMaxSampleValue", (short)0x0155, Attribute.EXTENDED),
-	TRANSFER_RANGE("TransferRange", (short)0x0156, Attribute.EXTENDED),
-	CLIP_PATH("ClipPath", (short)0x0157, Attribute.EXTENDED),
-	X_CLIP_PATH_UNITS("XClipPathUnits", (short)0x0158, Attribute.EXTENDED),
-	Y_CLIP_PATH_UNITS("YClipPathUnits", (short)0x0159, Attribute.EXTENDED),
+	TRANSFER_RANGE("TransferRange", (short)0x0156, Attribute.EXTENDED, FieldType.SHORT),
+	CLIP_PATH("ClipPath", (short)0x0157, Attribute.EXTENDED, FieldType.BYTE),
+	X_CLIP_PATH_UNITS("XClipPathUnits", (short)0x0158, Attribute.EXTENDED, FieldType.SLONG),
+	Y_CLIP_PATH_UNITS("YClipPathUnits", (short)0x0159, Attribute.EXTENDED, FieldType.SLONG),
 	
-	INDEXED("Indexed", (short)0x015A, Attribute.EXTENDED) {
+	INDEXED("Indexed", (short)0x015A, Attribute.EXTENDED, FieldType.SHORT) {
 		public String getFieldAsString(Object value) {
 			//
 			int intValue = ((int[])value)[0];
@@ -550,9 +550,9 @@ public enum TiffTag implements Tag {
 		}
 	},
 	
-	OPI_PROXY("OPIProxy", (short)0x015F, Attribute.EXTENDED),
+	OPI_PROXY("OPIProxy", (short)0x015F, Attribute.EXTENDED, FieldType.SHORT),
 	
-	GLOBAL_PARAMETERS_IFD("GlobalParametersIFD", (short)0x0190, Attribute.EXTENDED),
+	GLOBAL_PARAMETERS_IFD("GlobalParametersIFD", (short)0x0190, Attribute.EXTENDED, FieldType.LONG),
 	
 	PROFILE_TYPE("ProfileType", (short)0x0191, Attribute.EXTENDED) {
 		public String getFieldAsString(Object value) {
@@ -626,8 +626,8 @@ public enum TiffTag implements Tag {
 		}
 	},
 	
-	DECODE("Decode", (short)0x01B1, Attribute.EXTENDED),
-	DEFAULT_IMAGE_COLOR("DefaultImageColor", (short)0x01B2, Attribute.EXTENDED),
+	DECODE("Decode", (short)0x01B1, Attribute.EXTENDED, FieldType.SRATIONAL),
+	DEFAULT_IMAGE_COLOR("DefaultImageColor", (short)0x01B2, Attribute.EXTENDED, FieldType.SHORT),
 	
 	JPEG_PROC("JPEGProc", (short)0x0200, Attribute.EXTENDED) {
 		public FieldType getFieldType() {
@@ -732,8 +732,8 @@ public enum TiffTag implements Tag {
 		}
 	},
 	
-	RATING("Rating", (short)0x4746, Attribute.PRIVATE),
-	RATING_PERCENT("RatingPercent", (short)0x4749, Attribute.PRIVATE),
+	RATING("Rating", (short)0x4746, Attribute.PRIVATE, FieldType.SHORT),
+	RATING_PERCENT("RatingPercent", (short)0x4749, Attribute.PRIVATE, FieldType.SHORT),
 	
 	IMAGE_ID("ImageID", (short)0x800D, Attribute.EXTENDED) {
 		public FieldType getFieldType() {
@@ -741,7 +741,7 @@ public enum TiffTag implements Tag {
 		}
 	},
 	
-	MATTEING("Matteing", (short)0x80e3, Attribute.PRIVATE),
+	MATTEING("Matteing", (short)0x80e3, Attribute.PRIVATE, FieldType.SHORT),
 	
 	COPYRIGHT("Copyright", (short)0x8298, Attribute.BASELINE) {
 		public FieldType getFieldType() {
@@ -809,14 +809,14 @@ public enum TiffTag implements Tag {
 		}
 	},
 	
-	DATE_TIME_ORIGINAL("DateTime Original", (short)0x9003, Attribute.UNKNOWN),
+	DATE_TIME_ORIGINAL("DateTime Original", (short)0x9003, Attribute.UNKNOWN, FieldType.ASCII),
 	
 	/* Photoshop-specific TIFF tag. Starts with a null-terminated character
 	 * string of "Adobe Photoshop Document Data Block"
 	 */
-	IMAGE_SOURCE_DATA("ImageSourceData", (short)0x935C, Attribute.PRIVATE),
+	IMAGE_SOURCE_DATA("ImageSourceData", (short)0x935C, Attribute.PRIVATE, FieldType.UNDEFINED),
 	
-	WINDOWS_XP_TITLE("WindowsXPTitle", (short) 0x9c9b, Attribute.PRIVATE) {
+	WINDOWS_XP_TITLE("WindowsXPTitle", (short) 0x9c9b, Attribute.PRIVATE, FieldType.WINDOWSXP) {
 		public String getFieldAsString(Object value) {
 			//
 			byte[] byteValue = (byte[]) value;
@@ -834,7 +834,7 @@ public enum TiffTag implements Tag {
 	    }
 	},
 	
-	WINDOWS_XP_COMMENT("WindowsXPComment", (short)0x9c9c, Attribute.PRIVATE) {
+	WINDOWS_XP_COMMENT("WindowsXPComment", (short)0x9c9c, Attribute.PRIVATE, FieldType.WINDOWSXP) {
 		public String getFieldAsString(Object value) {
 			//
 			byte[] byteValue = (byte[])value;
@@ -852,7 +852,7 @@ public enum TiffTag implements Tag {
 	    }
 	},
 	
-	WINDOWS_XP_AUTHOR("WindowsXPAuthor", (short)0x9c9d, Attribute.PRIVATE) {
+	WINDOWS_XP_AUTHOR("WindowsXPAuthor", (short)0x9c9d, Attribute.PRIVATE, FieldType.WINDOWSXP) {
 		public String getFieldAsString(Object value) {
 			//
 			byte[] byteValue = (byte[])value;
@@ -870,7 +870,7 @@ public enum TiffTag implements Tag {
 	    }
 	},
 	
-	WINDOWS_XP_KEYWORDS("WindowsXPKeywords", (short)0x9c9e, Attribute.PRIVATE){
+	WINDOWS_XP_KEYWORDS("WindowsXPKeywords", (short)0x9c9e, Attribute.PRIVATE, FieldType.WINDOWSXP){
 		public String getFieldAsString(Object value) {
 			//
 			byte[] byteValue = (byte[])value;
@@ -888,7 +888,7 @@ public enum TiffTag implements Tag {
 	    }
 	},
 	
-	WINDOWS_XP_SUBJECT("WindowsXPSubject", (short) 0x9c9f, Attribute.PRIVATE) {
+	WINDOWS_XP_SUBJECT("WindowsXPSubject", (short) 0x9c9f, Attribute.PRIVATE, FieldType.WINDOWSXP) {
 		public String getFieldAsString(Object value) {
 			//
 			byte[] byteValue = (byte[]) value;
@@ -939,11 +939,19 @@ public enum TiffTag implements Tag {
 	
     private final Attribute attribute;
     
+    private final FieldType fieldType;
+    
     private TiffTag(String name, short value, Attribute attribute)
+	{
+		this(name, value, attribute, FieldType.UNKNOWN);
+	}
+    
+    private TiffTag(String name, short value, Attribute attribute, FieldType fieldType)
 	{
 		this.name = name;
 		this.value = value;
 		this.attribute = attribute;
+		this.fieldType = fieldType;
 	}
        
     public Attribute getAttribute() {
@@ -962,8 +970,13 @@ public enum TiffTag implements Tag {
     	return "";
 	}
     
+ 	/**
+ 	 * The field type the TIFF 6.0 / EXIF 2.32 specifications define for this tag, or
+ 	 * {@link FieldType#UNKNOWN} where none is defined (or the tag may hold any type). Where the
+ 	 * specification allows SHORT or LONG, LONG is returned.
+ 	 */
  	public FieldType getFieldType() {
-		return FieldType.UNKNOWN;
+		return fieldType;
 	}
     
     public String getName()	{

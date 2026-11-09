@@ -13,6 +13,7 @@
  *
  * Who   Date       Description
  * ====  =======    =================================================
+ * AK    09Nov2026  Added addField(Tag, Object), getField(Tag) and removeField(Tag)
  * WY    10Apr2015  Moved data loaded checking to ExifReader
  * WY    31Mar2015  Fixed bug with getImageIFD() etc
  * WY    17Feb2015  Added addImageField() to add TIFF image tag
@@ -33,6 +34,7 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -110,44 +112,133 @@ public abstract class Exif extends Metadata {
 		this(IOUtils.inputStreamToByteArray(is));
 	}
 	
+	/**
+	 * Adds a field to the EXIF SubIFD with an explicit field type. The value is
+	 * {@link FieldType#coerce(Object) coerced} to the type's Java representation, so both
+	 * {@code new short[] {400}} and {@code 400} are accepted for a SHORT.
+	 */
 	public void addExifField(ExifTag tag, FieldType type, Object data) {
 		if(exifSubIFD == null)
 			exifSubIFD = new IFD();
-		TiffField<?> field = FieldType.createField(tag, type, data);
-		if(field != null)
-			exifSubIFD.addField(field);
-		else
-			throw new IllegalArgumentException("Cannot create required EXIF TIFF field");
+		exifSubIFD.addField(createField(tag, type, data, "EXIF"));
 	}
-	
+
+	/** Adds a field to the GPS SubIFD with an explicit field type; see {@link #addExifField}. */
 	public void addGPSField(GPSTag tag, FieldType type, Object data) {
 		if(gpsSubIFD == null)
 			gpsSubIFD = new IFD();
-		TiffField<?> field = FieldType.createField(tag, type, data);
-		if(field != null)
-			gpsSubIFD.addField(field);
-		else
-			throw new IllegalArgumentException("Cannot create required GPS TIFF field");
+		gpsSubIFD.addField(createField(tag, type, data, "GPS"));
 	}
-	
+
+	/** Adds a field to the Interoperability SubIFD with an explicit field type; see {@link #addExifField}. */
 	public void addInteropField(InteropTag tag, FieldType type, Object data) {
 		if(interopSubIFD == null)
 			interopSubIFD = new IFD();
-		TiffField<?> field = FieldType.createField(tag, type, data);
-		if(field != null)
-			interopSubIFD.addField(field);
-		else
-			throw new IllegalArgumentException("Cannot create required interop TIFF field");
+		interopSubIFD.addField(createField(tag, type, data, "interop"));
 	}
-	
+
+	/** Adds a field to the image IFD (IFD0) with an explicit field type; see {@link #addExifField}. */
 	public void addImageField(TiffTag tag, FieldType type, Object data) {
 		if(imageIFD == null)
 			imageIFD = new IFD();
-		TiffField<?> field = FieldType.createField(tag, type, data);
-		if(field != null)
-			imageIFD.addField(field);
-		else
-			throw new IllegalArgumentException("Cannot create required Image TIFF field");
+		imageIFD.addField(createField(tag, type, data, "Image"));
+	}
+
+	private static TiffField<?> createField(Tag tag, FieldType type, Object data, String what) {
+		if(type == null || type == FieldType.UNKNOWN)
+			throw new IllegalArgumentException("A field type is required for " + what + " tag " + tag.getName());
+		TiffField<?> field = FieldType.createField(tag, type, type.coerce(data));
+		if(field == null)
+			throw new IllegalArgumentException("Cannot create required " + what + " TIFF field " + tag.getName() + " of type " + type);
+		return field;
+	}
+
+	/**
+	 * Adds (or replaces) a field, choosing the IFD from the tag's class and the TIFF field type
+	 * from {@link Tag#getFieldType()}: a {@link TiffTag} goes to the image IFD (IFD0), an
+	 * {@link ExifTag} to the EXIF SubIFD, a {@link GPSTag} to the GPS SubIFD and an
+	 * {@link InteropTag} to the Interoperability SubIFD.
+	 * <p>
+	 * The value may be given in any form {@link FieldType#coerce(Object)} accepts, for example
+	 * <pre>
+	 *   exif.addField(TiffTag.ARTIST, "Jane Tester");
+	 *   exif.addField(ExifTag.DATE_TIME_ORIGINAL, new Date());
+	 *   exif.addField(ExifTag.ISO_SPEED_RATINGS, 400);
+	 *   exif.addField(ExifTag.FNUMBER, 2.8);
+	 *   exif.addField(ExifTag.EXPOSURE_TIME, "1/250");
+	 *   exif.addField(GPSTag.GPS_LATITUDE, new double[] {52, 30, 12.5});
+	 *   exif.addField(ExifTag.USER_COMMENT, "Hello");   // stored with the ASCII/UNICODE character code
+	 * </pre>
+	 * UserComment, GPSProcessingMethod and GPSAreaInformation take a string and prepend the
+	 * 8 byte character code the specification requires ({@code ASCII} if the text is 7-bit
+	 * ASCII, otherwise {@code UNICODE} with UTF-16 in this EXIF's byte order).
+	 *
+	 * @param tag the tag; its {@link Tag#getFieldType() field type} must be known
+	 * @param value the value
+	 * @throws IllegalArgumentException if the tag's type is unknown, the tag class is not one of
+	 *         the four above or the value cannot be converted
+	 */
+	public void addField(Tag tag, Object value) {
+		if(tag == null) throw new IllegalArgumentException("Tag is null");
+		if(value == null) throw new IllegalArgumentException("Value for " + tag.getName() + " is null");
+		FieldType type = tag.getFieldType();
+		if(type == null || type == FieldType.UNKNOWN)
+			throw new IllegalArgumentException("No field type is defined for tag " + tag.getName()
+					+ "; use addImageField/addExifField/addGPSField/addInteropField with an explicit FieldType");
+		if(value instanceof String && (tag == ExifTag.USER_COMMENT || tag == GPSTag.GPS_PROCESSING_METHOD
+				|| tag == GPSTag.GPS_AREA_INFORMATION))
+			value = encodeWithCharacterCode((String)value);
+		if(tag instanceof TiffTag) addImageField((TiffTag)tag, type, value);
+		else if(tag instanceof ExifTag) addExifField((ExifTag)tag, type, value);
+		else if(tag instanceof GPSTag) addGPSField((GPSTag)tag, type, value);
+		else if(tag instanceof InteropTag) addInteropField((InteropTag)tag, type, value);
+		else throw new IllegalArgumentException("Unsupported tag class " + tag.getClass().getName() + " for tag " + tag.getName());
+	}
+
+	private static final byte[] CHARACTER_CODE_ASCII = {0x41, 0x53, 0x43, 0x49, 0x49, 0, 0, 0};
+	private static final byte[] CHARACTER_CODE_UNICODE = {0x55, 0x4E, 0x49, 0x43, 0x4F, 0x44, 0x45, 0};
+
+	/** UserComment style value: 8 byte character code followed by the text in that encoding. */
+	private byte[] encodeWithCharacterCode(String text) {
+		boolean ascii = true;
+		for(int i = 0; i < text.length() && ascii; i++)
+			ascii = text.charAt(i) < 0x80;
+		byte[] code = ascii ? CHARACTER_CODE_ASCII : CHARACTER_CODE_UNICODE;
+		byte[] body = text.getBytes(ascii ? StandardCharsets.US_ASCII
+				: (preferredEndian == IOUtils.BIG_ENDIAN ? StandardCharsets.UTF_16BE : StandardCharsets.UTF_16LE));
+		byte[] out = new byte[code.length + body.length];
+		System.arraycopy(code, 0, out, 0, code.length);
+		System.arraycopy(body, 0, out, code.length, body.length);
+		return out;
+	}
+
+	/**
+	 * Returns the field for a tag from the IFD its class belongs to (see {@link #addField}), or
+	 * null if there is none.
+	 */
+	public TiffField<?> getField(Tag tag) {
+		ensureDataRead();
+		IFD ifd = ifdFor(tag);
+		return ifd == null ? null : ifd.getField(tag);
+	}
+
+	/**
+	 * Removes the field for a tag from the IFD its class belongs to (see {@link #addField}).
+	 *
+	 * @return the removed field, or null if there was none
+	 */
+	public TiffField<?> removeField(Tag tag) {
+		ensureDataRead();
+		IFD ifd = ifdFor(tag);
+		return ifd == null ? null : ifd.removeField(tag);
+	}
+
+	private IFD ifdFor(Tag tag) {
+		if(tag instanceof TiffTag) return imageIFD;
+		if(tag instanceof ExifTag) return exifSubIFD;
+		if(tag instanceof GPSTag) return gpsSubIFD;
+		if(tag instanceof InteropTag) return interopSubIFD;
+		throw new IllegalArgumentException("Unsupported tag class " + tag.getClass().getName());
 	}
 	
 	public boolean containsThumbnail() {
