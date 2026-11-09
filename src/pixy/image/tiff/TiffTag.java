@@ -994,7 +994,23 @@ public enum TiffTag implements Tag {
 		return name + " [Value: " + StringUtils.shortToHexStringMM(value) +"] (" + getAttribute() + ")";
 	}
     
+    /**
+     * Descriptive tags: metadata about the image that can be replaced without affecting how the
+     * image data is decoded. Everything else (dimensions, strip offsets, compression, colour
+     * layout, sub IFD pointers, ...) is critical and is never overridden by a metadata write.
+     */
+    private static final java.util.Set<TiffTag> DESCRIPTIVE = java.util.EnumSet.of(
+    		IMAGE_DESCRIPTION, MAKE, MODEL, ORIENTATION, X_RESOLUTION, Y_RESOLUTION, RESOLUTION_UNIT,
+    		SOFTWARE, DATETIME, ARTIST, HOST_COMPUTER, COPYRIGHT, DOCUMENT_NAME, PAGE_NAME, IMAGE_ID,
+    		RATING, RATING_PERCENT, DATE_TIME_ORIGINAL, WINDOWS_XP_TITLE, WINDOWS_XP_COMMENT,
+    		WINDOWS_XP_AUTHOR, WINDOWS_XP_KEYWORDS, WINDOWS_XP_SUBJECT);
+
+    /**
+     * Whether the tag is critical to decoding the image. Critical tags of an existing TIFF are
+     * never overridden when EXIF is inserted; descriptive tags (Artist, Copyright, DateTime,
+     * Orientation, Software, ...) may be.
+     */
     public boolean isCritical() {
-    	return true;
+    	return !DESCRIPTIVE.contains(this);
     }
 }

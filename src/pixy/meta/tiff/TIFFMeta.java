@@ -716,6 +716,20 @@ public class TIFFMeta {
 			throw new IllegalArgumentException("pageNumber " + pageNumber + " out of bounds: 0 - " + (ifds.size() - 1));
 		
 		IFD imageIFD = ifds.get(pageNumber);
+		if(!update) {
+			// Replace: the descriptive IFD0 tags and the EXIF, GPS and Interoperability sub IFDs of
+			// the image give way to those of the given Exif; structural tags stay untouched. This
+			// matches JPEG, where update = false replaces the whole APP1 segment.
+			for(TiffField<?> field : new ArrayList<TiffField<?>>(imageIFD.getFields())) {
+				Tag tag = TiffTag.fromShort(field.getTag());
+				if(tag != TiffTag.UNKNOWN && !tag.isCritical())
+					imageIFD.removeField(tag);
+			}
+			imageIFD.removeField(TiffTag.EXIF_SUB_IFD);
+			imageIFD.removeChild(TiffTag.EXIF_SUB_IFD);
+			imageIFD.removeField(TiffTag.GPS_SUB_IFD);
+			imageIFD.removeChild(TiffTag.GPS_SUB_IFD);
+		}
 		IFD exifSubIFD = imageIFD.getChild(TiffTag.EXIF_SUB_IFD);
 		IFD gpsSubIFD = imageIFD.getChild(TiffTag.GPS_SUB_IFD);
 		IFD interopSubIFD = (exifSubIFD != null)? exifSubIFD.getChild(ExifTag.EXIF_INTEROPERABILITY_OFFSET) : null;

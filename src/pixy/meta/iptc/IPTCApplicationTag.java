@@ -179,7 +179,15 @@ public enum IPTCApplicationTag implements IPTCTag {
 			 return true;
 		 }
 	 },
-	  
+
+	 // Photoshop / IPTC extension data sets
+	 LOCAL_CAPTION(121, "LocalCaption"),
+	 JOB_ID(184, "JobID"),
+	 MASTER_DOCUMENT_ID(185, "MasterDocumentID"),
+	 SHORT_DOCUMENT_ID(186, "ShortDocumentID"),
+	 UNIQUE_DOCUMENT_ID(187, "UniqueDocumentID"),
+	 OWNER_ID(188, "OwnerID"),
+
 	 UNKNOWN(999, "Unknown");
 	 
 	 private IPTCApplicationTag(int tag, String name) {

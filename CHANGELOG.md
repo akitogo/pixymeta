@@ -1,5 +1,50 @@
 # Changelog
 
+## 1.4.0 - 2026-11-09
+
+The runtime-neutral editing layer the BoxLang (bx-image) and Lucee (extension-image) metadata
+writers are built on. Still no runtime dependency beyond `slf4j-api`.
+
+### Added
+- **`pixy.meta.edit.MetadataEditor`.** Reads the metadata of an image (`read(InputStream | byte[] |
+  Path | File)`) or starts empty (`create()`), keeps a working copy of EXIF, IPTC, XMP, ICC profile
+  and comments, and takes edits by tag name and plain value: `setExifTag("Date/Time Original",
+  LocalDateTime.now())`, `setExifTag("GPSLatitude", 52.503472)` (decimal degrees become
+  degrees/minutes/seconds and set the Ref tag), `setIptcTag("Keywords", List.of("a", "b"))`,
+  `setXmp(xml)`, `setIccProfile(bytes)`, `setComments(list)`, `removeExifTag`, `removeIptcTag`,
+  `remove(MetadataType...)`, `removeAll()`; getters return formatted values (`getExifTag`,
+  `getExifValues`, `getIptcTag`, `getIptcValues`, `getXmp`, ...). `apply(InputStream, OutputStream)`,
+  `apply(byte[])`, `apply(Path)` (in place, via a temporary file and an atomic move) and
+  `apply(Path, Path)` write the working copy with `Metadata.insertMetadata`, so the image data is
+  copied byte for byte and metadata the editor does not know about stays. A metadata type the
+  format cannot hold (EXIF in PNG, IPTC in WebP) fails with `UnsupportedOperationException` when
+  set and again, before anything is written, when applied to a different target format; removing
+  such a type is a no-op. `writableTypes(ImageType)` / `removableTypes(ImageType)` expose the
+  capability matrix. A written IPTC block always carries an ApplicationRecordVersion.
+- **`pixy.meta.edit.TagNames`.** Resolves EXIF, TIFF, GPS and Interoperability tag names and IPTC
+  data set names in any common spelling: specification names (`DateTimeOriginal`), the display
+  names metadata-extractor and exiftool use (`Date/Time Original`, `By-line`, `Caption/Abstract`),
+  PIXYMETA enum constants, aliases (`ISO`, `PhotographicSensitivity`, `Copyright` for IPTC,
+  `Caption`, `Creator`), numeric ids (`0x9003`, `36867`, `2:25`) and directory prefixes
+  (`exif:`, `gps:`, `interop:`, `ifd0:`, `iptc:`). Every tag name of metadata-extractor's EXIF, GPS,
+  Interoperability and IPTC directories that PIXYMETA knows resolves to the same tag (tested),
+  with two documented exceptions where metadata-extractor's name differs from the specification
+  (`White Balance`, `Subject Location` resolve to the specification's tag).
+- `IPTCApplicationTag`: `LocalCaption` (2:121), `JobID` (2:184), `MasterDocumentID` (2:185),
+  `ShortDocumentID` (2:186), `UniqueDocumentID` (2:187), `OwnerID` (2:188).
+
+### Changed
+- **TIFF: `insertExif(..., update = false)` now replaces.** Descriptive IFD0 tags (Artist,
+  Copyright, DateTime, Make, Model, Software, Orientation, resolution, Windows XP tags, ...) and
+  the EXIF, GPS and Interoperability sub IFDs of the image give way to those of the given `Exif`,
+  as `update = false` has always replaced the whole APP1 segment of a JPEG. Structural tags
+  (dimensions, strips, compression, colour layout, ...) are never touched. Previously the old
+  descriptive tags and an old EXIF SubIFD were kept unless the new `Exif` overrode them.
+  `update = true` (merge) is unchanged.
+- `TiffTag.isCritical()` now returns false for the descriptive tags above (it was false only for
+  ImageDescription and Make), so inserting EXIF into a TIFF that already has e.g. an Artist tag no
+  longer fails with "Override of TIFF critical Tag".
+
 ## 1.3.0 - 2026-11-09
 
 Groundwork for metadata editing from scripting runtimes (BoxLang, Lucee): callers no longer need

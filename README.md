@@ -91,6 +91,28 @@ lists, decimal or fraction strings, dates). The explicit `addImageField/addExifF
 addInteropField(tag, FieldType, value)` methods accept the same inputs. `Exif.getField(tag)` and
 `Exif.removeField(tag)` look a field up or remove it in the IFD the tag belongs to.
 
+For editing by name, `pixy.meta.edit.MetadataEditor` (1.4.0) wraps all of this: it reads an
+image's metadata, takes changes by tag name in any common spelling (`DateTimeOriginal`,
+`Date/Time Original`, `By-line`, `Copyright`, ...) with plain values, and writes the result back
+without touching the image data:
+
+```java
+MetadataEditor editor = MetadataEditor.read(Paths.get("photo.jpg"));
+editor.getExifTag("Model");                                      // "NIKON D300"
+editor.getIptcTag("Keywords");                                   // ["garden", "spring"]
+editor.setExifTag("Copyright", "(c) 2026 akitogo")
+      .setExifTag("Date/Time Original", LocalDateTime.now())
+      .setExifTag("GPSLatitude", 52.503472)                      // sets GPSLatitudeRef too
+      .setIptcTag("Keywords", List.of("garden", "spring"))
+      .setXmp(xmpPacket)
+      .removeExifTag("Software")
+      .apply(Paths.get("photo.jpg"));                            // in place, atomic
+MetadataEditor.read(file).removeAll().apply(file);               // strip everything
+```
+
+Formats that cannot hold a metadata type (EXIF in PNG, IPTC in WebP) are refused with a clear
+`UnsupportedOperationException`; see `MetadataEditor.writableTypes(ImageType)`.
+
 Several changes can be applied in one call with `Metadata.insertMetadata`. For JPEG the whole
 update is written in a single pass over the file (one read of the input, one write of the
 output, image data copied untouched); for TIFF, PNG, GIF and WebP the single operations are
@@ -175,7 +197,7 @@ Releases of this fork are published to Maven Central:
 <dependency>
   <groupId>com.akitogo</groupId>
   <artifactId>pixymeta</artifactId>
-  <version>1.3.0</version>
+  <version>1.4.0</version>
 </dependency>
 ```
 

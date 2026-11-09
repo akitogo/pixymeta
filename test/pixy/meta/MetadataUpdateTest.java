@@ -194,6 +194,35 @@ public class MetadataUpdateTest {
 	}
 
 	@Test
+	@DisplayName("TIFF: insertExif without update replaces descriptive tags and sub IFDs, keeps the structure")
+	void tiffExifReplace() throws Exception {
+		byte[] original = read("images/iptc.tif"); // Canon EXIF with DateTimeOriginal, Make, Model
+		com.drew.metadata.Metadata before = MetadataExtractorOracle.read(original);
+		ExifIFD0Directory ifd0Before = before.getFirstDirectoryOfType(ExifIFD0Directory.class);
+		assertNotNull(ifd0Before.getString(ExifIFD0Directory.TAG_MAKE));
+		assertNotNull(before.getFirstDirectoryOfType(ExifSubIFDDirectory.class));
+
+		TiffExif exif = new TiffExif();
+		exif.addField(TiffTag.ARTIST, "Jane Tester");
+		byte[] out = transform(original, (is, os) -> Metadata.insertExif(is, os, exif, false));
+
+		com.drew.metadata.Metadata after = MetadataExtractorOracle.read(out);
+		ExifIFD0Directory ifd0 = after.getFirstDirectoryOfType(ExifIFD0Directory.class);
+		assertEquals("Jane Tester", ifd0.getString(ExifIFD0Directory.TAG_ARTIST));
+		assertFalse(ifd0.containsTag(ExifIFD0Directory.TAG_MAKE), "descriptive tag replaced");
+		assertNull(after.getFirstDirectoryOfType(ExifSubIFDDirectory.class), "EXIF SubIFD replaced");
+		assertEquals(ifd0Before.getInt(ExifIFD0Directory.TAG_IMAGE_WIDTH), ifd0.getInt(ExifIFD0Directory.TAG_IMAGE_WIDTH), "structure kept");
+		assertEquals(List.of(), MetadataExtractorOracle.errors(after));
+		assertSamePixels(original, out);
+
+		// With update the old tags stay and the new one is added
+		byte[] merged = transform(original, (is, os) -> Metadata.insertExif(is, os, exif, true));
+		ExifIFD0Directory ifd0Merged = MetadataExtractorOracle.read(merged).getFirstDirectoryOfType(ExifIFD0Directory.class);
+		assertEquals("Jane Tester", ifd0Merged.getString(ExifIFD0Directory.TAG_ARTIST));
+		assertEquals(ifd0Before.getString(ExifIFD0Directory.TAG_MAKE), ifd0Merged.getString(ExifIFD0Directory.TAG_MAKE));
+	}
+
+	@Test
 	@DisplayName("PNG: XMP and ICC are inserted, IPTC (unsupported) is skipped with a log message")
 	void pngChained() throws Exception {
 		byte[] original = read("images/stonehouse.png");
