@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.3.0 - unreleased
+## 1.3.0 - 2026-11-09
 
 Groundwork for metadata editing from scripting runtimes (BoxLang, Lucee): callers no longer need
 to know TIFF field types or Java array layouts, several changes can be written in one pass, and
